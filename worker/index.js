@@ -1,4 +1,3 @@
-// worker/index.js
 const { io } = require('socket.io-client');
 const { encrypt, decrypt } = require('../shared/chunk');
 
@@ -9,22 +8,21 @@ socket.on('connect', () => {
 });
 
 socket.on('task-chunk', async (data) => {
-    // Decrypt the incoming chunk
-    const chunk = decrypt(data.chunk);
-    console.log(`Received encrypted chunk of ${chunk.length} tasks`);
+    const { jobId, chunk } = decrypt(data.chunk);
+    console.log(`Received chunk of ${chunk.length} tasks for job ${jobId}`);
 
-    const results = await Promise.all(chunk.map(task => processTask(task)));
+    const result = await Promise.all(chunk.map(task => processTask(task)));
 
-    // Encrypt results before sending back
-    socket.emit('chunk-result', encrypt(results));
-    console.log('Encrypted results sent back to master');
+    // Send result back WITH jobId so master knows which job this belongs to
+    socket.emit('chunk-result', encrypt({ jobId, result }));
+    console.log(`Results sent back for job ${jobId}`);
 });
 
 function processTask(task) {
     return new Promise(resolve => {
         setTimeout(() => {
             resolve(`Processed: ${task}`);
-        }, 5000);
+        }, 2000);
     });
 }
 
