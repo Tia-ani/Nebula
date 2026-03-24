@@ -6,6 +6,7 @@ const { v4: uuidv4 } = require('uuid');
 
 const app = express();
 app.use(express.json());
+app.use(express.static('dashboard'));
 
 const server = http.createServer(app);
 const io = new Server(server);
@@ -15,9 +16,26 @@ let workers = [];
 // Each job lives in its own isolated object
 let jobs = {};
 
+// Track global stats
+let jobsCompleted = 0;
+let tasksProcessed = 0;
+let recentJobs = [];
+
+function emitDashboardUpdate() {
+    io.emit('dashboard-update', {
+        workerCount: workers.length,
+        workers: workers,
+        jobsRunning: Object.keys(jobs).length,
+        jobsCompleted,
+        tasksProcessed,
+        jobs: recentJobs.slice(-10) // last 10 jobs
+    });
+}
+
 io.on('connection', (socket) => {
     console.log(`Worker connected: ${socket.id}`);
     workers.push(socket.id);
+    emitDashboardUpdate()
 
     socket.on('chunk-result', (data) => {
         const { jobId, result } = decrypt(data);
@@ -35,6 +53,12 @@ io.on('connection', (socket) => {
         if (job.pendingResults.length === job.totalChunks) {
             const finalResult = assembleResults(job.pendingResults);
             console.log(`Job ${jobId} complete!`);
+
+            jobsCompleted++;
+            tasksProcessed += finalResult.length;
+            const jobIndex = recentJobs.findIndex(j => j.id === jobId);
+            if (jobIndex !== -1) recentJobs[jobIndex].status = 'complete';
+            emitDashboardUpdate();
             
             // Send result back to the right customer
             job.res.json({ jobId, result: finalResult });
@@ -46,6 +70,7 @@ io.on('connection', (socket) => {
 
     socket.on('disconnect', () => {
         workers = workers.filter(id => id !== socket.id);
+        emitDashboardUpdate()
         console.log(`Worker disconnected: ${socket.id}`);
 
         // Check all jobs for lost chunks
@@ -93,6 +118,13 @@ app.post('/job', (req, res) => {
     jobs[jobId].totalChunks = chunks.length;
 
     console.log(`Job ${jobId} started with ${chunks.length} chunks`);
+
+    recentJobs.push({ 
+        id: jobId, 
+        chunks: chunks.length, 
+        status: 'running' 
+    });
+    emitDashboardUpdate();
 
     chunks.forEach((chunk, index) => {
         const workerId = workers[index];
