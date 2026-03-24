@@ -33,9 +33,13 @@ function emitDashboardUpdate() {
 }
 
 io.on('connection', (socket) => {
+    const type = socket.handshake.query.type;
+    
+    if (type !== 'worker') return;
+    
     console.log(`Worker connected: ${socket.id}`);
     workers.push(socket.id);
-    emitDashboardUpdate()
+    emitDashboardUpdate();
 
     socket.on('chunk-result', (data) => {
         const { jobId, result } = decrypt(data);

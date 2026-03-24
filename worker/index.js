@@ -1,7 +1,9 @@
 const { io } = require('socket.io-client');
 const { encrypt, decrypt } = require('../shared/chunk');
 
-const socket = io('http://localhost:3000');
+const socket = io('http://localhost:3000', {
+    query: { type: 'worker' }
+});
 
 socket.on('connect', () => {
     console.log('Connected to Nebula master as worker:', socket.id);
@@ -13,17 +15,30 @@ socket.on('task-chunk', async (data) => {
 
     const result = await Promise.all(chunk.map(task => processTask(task)));
 
-    // Send result back WITH jobId so master knows which job this belongs to
     socket.emit('chunk-result', encrypt({ jobId, result }));
     console.log(`Results sent back for job ${jobId}`);
 });
 
-function processTask(task) {
-    return new Promise(resolve => {
-        setTimeout(() => {
-            resolve(`Processed: ${task}`);
-        }, 2000);
-    });
+// REAL AI INFERENCE
+async function processTask(task) {
+    try {
+        const response = await fetch('http://localhost:11434/api/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                model: 'llama3.2',
+                prompt: task,
+                stream: false
+            })
+        });
+
+        const data = await response.json();
+        return data.response.trim();
+
+    } catch (error) {
+        console.error('AI inference failed:', error.message);
+        return `Error processing task: ${error.message}`;
+    }
 }
 
 socket.on('disconnect', () => {
