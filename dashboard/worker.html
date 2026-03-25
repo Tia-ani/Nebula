@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nebula Worker</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #0a0a0a;
+            color: #ffffff;
+            font-family: 'Courier New', monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        h1 { font-size: 2rem; color: #a78bfa; margin-bottom: 8px; }
+        .subtitle { color: #666; margin-bottom: 40px; font-size: 0.9rem; }
+        .status-card {
+            background: #111;
+            border: 1px solid #222;
+            border-radius: 12px;
+            padding: 40px;
+            text-align: center;
+            width: 100%;
+            max-width: 400px;
+            margin-bottom: 20px;
+        }
+        .status-dot {
+            width: 16px; height: 16px;
+            border-radius: 50%;
+            background: #666;
+            margin: 0 auto 16px;
+            transition: background 0.3s;
+        }
+        .status-dot.connected { background: #34d399; animation: pulse 1.5s infinite; }
+        .status-dot.working { background: #fbbf24; animation: pulse 0.5s infinite; }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+        .status-text { font-size: 1.2rem; margin-bottom: 8px; }
+        .status-sub { font-size: 0.8rem; color: #666; }
+        .stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            width: 100%;
+            max-width: 400px;
+        }
+        .stat {
+            background: #111;
+            border: 1px solid #222;
+            border-radius: 8px;
+            padding: 16px;
+            text-align: center;
+        }
+        .stat-num { font-size: 1.8rem; color: #a78bfa; font-weight: bold; }
+        .stat-label { font-size: 0.75rem; color: #666; text-transform: uppercase; letter-spacing: 1px; margin-top: 4px; }
+        .log {
+            width: 100%; max-width: 400px;
+            margin-top: 20px;
+            background: #111;
+            border: 1px solid #222;
+            border-radius: 8px;
+            padding: 16px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .log-entry { font-size: 0.75rem; color: #666; margin-bottom: 4px; }
+        .log-entry.success { color: #34d399; }
+        .log-entry.info { color: #60a5fa; }
+    </style>
+</head>
+<body>
+    <h1>⚡ Nebula Worker</h1>
+    <p class="subtitle">Contributing compute to the network</p>
+
+    <div class="status-card">
+        <div class="status-dot" id="status-dot"></div>
+        <div class="status-text" id="status-text">Connecting...</div>
+        <div class="status-sub" id="status-sub">Establishing connection to Nebula</div>
+    </div>
+
+    <div class="stats">
+        <div class="stat">
+            <div class="stat-num" id="tasks-done">0</div>
+            <div class="stat-label">Tasks Done</div>
+        </div>
+        <div class="stat">
+            <div class="stat-num" id="chunks-done">0</div>
+            <div class="stat-label">Chunks Done</div>
+        </div>
+    </div>
+
+    <div class="log" id="log"></div>
+
+    <script>
+        let tasksDone = 0;
+        let chunksDone = 0;
+
+        const socket = io({ query: { type: 'browser-worker' } });
+
+        function addLog(message, type = '') {
+            const log = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.textContent = `> ${message}`;
+            log.appendChild(entry);
+            log.scrollTop = log.scrollHeight;
+        }
+
+        function setStatus(dot, text, sub) {
+            document.getElementById('status-dot').className = `status-dot ${dot}`;
+            document.getElementById('status-text').textContent = text;
+            document.getElementById('status-sub').textContent = sub;
+        }
+
+        socket.on('connect', () => {
+            setStatus('connected', '🟢 Connected', 'Ready to receive tasks');
+            addLog('Connected to Nebula network', 'info');
+        });
+
+        socket.on('task-chunk', async (data) => {
+            setStatus('working', '⚡ Working...', 'Processing your chunk');
+
+            const { jobId, chunk } = JSON.parse(data.chunk.replace('PLAIN:', ''));
+            addLog(`Received chunk of ${chunk.length} tasks`, 'info');
+
+            const results = chunk.map(task => processTask(task));
+
+            chunksDone++;
+            tasksDone += chunk.length;
+
+            document.getElementById('tasks-done').textContent = tasksDone;
+            document.getElementById('chunks-done').textContent = chunksDone;
+
+            socket.emit('chunk-result', 'PLAIN:' + JSON.stringify({ jobId, result: results }));
+
+            addLog(`Chunk complete — ${chunk.length} tasks processed`, 'success');
+            setStatus('connected', '🟢 Connected', 'Ready for next task');
+        });
+
+        function processTask(task) {
+            return {
+                input: task,
+                wordCount: task.split(' ').length,
+                charCount: task.length,
+                sentiment: quickSentiment(task),
+                processed: true
+            };
+        }
+
+        function quickSentiment(text) {
+            const positive = ['good','great','love','excellent','amazing','awesome','fantastic','wonderful','best','happy'];
+            const negative = ['bad','terrible','hate','awful','worst','horrible','poor','disappointing','never','waste'];
+            const lower = text.toLowerCase();
+            const posCount = positive.filter(w => lower.includes(w)).length;
+            const negCount = negative.filter(w => lower.includes(w)).length;
+            if (posCount > negCount) return 'positive';
+            if (negCount > posCount) return 'negative';
+            return 'neutral';
+        }
+
+        socket.on('disconnect', () => {
+            setStatus('', 'Disconnected', 'Lost connection to Nebula');
+            addLog('Disconnected from network');
+        });
+    </script>
+</body>
+</html>

@@ -10,6 +10,12 @@ socket.on('connect', () => {
 });
 
 socket.on('task-chunk', async (data) => {
+    // Safety check — if master sends wrong format, skip it
+    if (typeof data.chunk === 'string' && data.chunk.startsWith('PLAIN:')) {
+        console.log('Received wrong format — skipping');
+        return;
+    }
+
     const { jobId, chunk } = decrypt(data.chunk);
     console.log(`Received chunk of ${chunk.length} tasks for job ${jobId}`);
 

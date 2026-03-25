@@ -14,7 +14,7 @@ async function main() {
 
     console.log('AI Results:');
     result.result.forEach((r, i) => {
-        console.log(`Task ${i + 1}: ${r}`);
+        console.log(`Task ${i + 1}:`, typeof r === 'object' ? JSON.stringify(r, null, 2) : r);
     });
 }
 
