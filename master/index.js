@@ -3,6 +3,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const { splitIntoChunks, assembleResults, encrypt, decrypt } = require('../shared/chunk');
 const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
 
 const app = express();
 app.use(express.json());
@@ -39,19 +40,28 @@ io.on('connection', (socket) => {
 
     if (type === 'worker' || type === 'browser-worker') {
         console.log(`${type} connected: ${socket.id}`);
-        workers.push({ id: socket.id, type });
+
+        const sessionKey = crypto.randomBytes(32);
+        workers.push({ id: socket.id, type, sessionKey });
+
+        // Send session key to worker immediately on connect
+        socket.emit('session-key', sessionKey.toString('hex'));
+
         emitDashboardUpdate();
     }
 
     socket.on('chunk-result', (data) => {
         let jobId, result;
 
+        const worker = workers.find(w => w.id === socket.id);
+        if (!worker) return;
+
         if (typeof data === 'string' && data.startsWith('PLAIN:')) {
             const parsed = JSON.parse(data.replace('PLAIN:', ''));
             jobId = parsed.jobId;
             result = parsed.result;
         } else {
-            const decrypted = decrypt(data);
+            const decrypted = decrypt(data, worker.sessionKey);
             jobId = decrypted.jobId;
             result = decrypted.result;
         }
@@ -80,9 +90,12 @@ io.on('connection', (socket) => {
     });
 
     socket.on('disconnect', () => {
+        const disconnectedWorker = workers.find(w => w.id === socket.id);
         workers = workers.filter(w => w.id !== socket.id);
         emitDashboardUpdate();
         console.log(`Worker disconnected: ${socket.id}`);
+
+        if (!disconnectedWorker) return;
 
         Object.keys(jobs).forEach(jobId => {
             const job = jobs[jobId];
@@ -95,8 +108,16 @@ io.on('connection', (socket) => {
 
                 if (workers.length > 0) {
                     const newWorker = workers[0];
+
+                    let newPayload;
+                    if (newWorker.type === 'browser-worker') {
+                        newPayload = 'PLAIN:' + JSON.stringify({ jobId, chunk: lostChunk });
+                    } else {
+                        newPayload = encrypt({ jobId, chunk: lostChunk }, newWorker.sessionKey);
+                    }
+
                     job.workerChunkMap[newWorker.id] = lostChunk;
-                    io.to(newWorker.id).emit('task-chunk', { chunk: lostChunk });
+                    io.to(newWorker.id).emit('task-chunk', { chunk: newPayload });
                     console.log(`Chunk reassigned to: ${newWorker.id}`);
                 } else {
                     console.log('No workers available to reassign chunk!');
@@ -138,14 +159,13 @@ app.post('/job', (req, res) => {
         const worker = workers[index];
 
         let payload;
-
         if (worker.type === 'browser-worker') {
             payload = 'PLAIN:' + JSON.stringify({ jobId, chunk });
         } else {
-            payload = encrypt({ jobId, chunk });
+            payload = encrypt({ jobId, chunk }, worker.sessionKey);
         }
 
-        jobs[jobId].workerChunkMap[worker.id] = payload;
+        jobs[jobId].workerChunkMap[worker.id] = chunk;
         io.to(worker.id).emit('task-chunk', { chunk: payload });
     });
 });
