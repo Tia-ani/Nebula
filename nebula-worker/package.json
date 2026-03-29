@@ -1,0 +1,20 @@
+{
+    "name": "nebula-worker",
+    "version": "1.0.0",
+    "description": "Contribute your idle compute to the Nebula network",
+    "main": "src/worker.js",
+    "bin": {
+        "nebula-worker": "bin/cli.js"
+    },
+    "dependencies": {
+        "socket.io-client": "^4.7.2",
+        "commander": "^12.0.0"
+    },
+    "keywords": [
+        "nebula",
+        "distributed-compute",
+        "ai",
+        "ollama"
+    ],
+    "license": "MIT"
+}
