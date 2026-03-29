@@ -27,26 +27,34 @@ async function detectModel(preferredModel) {
         const models = data.models || [];
 
         if (models.length === 0) {
-            console.error('❌  No Ollama models found. Run: ollama pull llama3.2');
+            console.log('\n Ollama is running but no models are installed.');
+            console.log(' Run: ollama pull llama3.2');
+            console.log(' Then restart nebula-worker\n');
             process.exit(1);
         }
 
         if (preferredModel) {
             const match = models.find(m => m.name.includes(preferredModel));
             if (!match) {
-                console.warn(`⚠️  Model "${preferredModel}" not found. Using "${models[0].name}" instead.`);
+                console.warn(`Model "${preferredModel}" not found. Using "${models[0].name}" instead.`);
                 return models[0].name;
             }
             return match.name;
         }
 
-        // Auto-pick: prefer llama3.2, otherwise first available
         const preferred = models.find(m => m.name.includes('llama3.2'));
-        const chosen = preferred ? preferred.name : models[0].name;
-        return chosen;
+        return preferred ? preferred.name : models[0].name;
 
     } catch (err) {
-        console.error('❌  Ollama is not running. Start it with: ollama serve');
+        console.log('\n Ollama not detected on your machine.');
+        console.log('');
+        console.log(' To contribute compute and earn credits:');
+        console.log(' 1. Install Ollama  →  https://ollama.ai');
+        console.log(' 2. Run: ollama pull llama3.2');
+        console.log(' 3. Restart nebula-worker');
+        console.log('');
+        console.log(' Browser worker coming soon — no install needed.');
+        console.log('');
         process.exit(1);
     }
 }

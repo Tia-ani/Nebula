@@ -1,6 +1,6 @@
 {
     "name": "nebula-worker",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "description": "Contribute your idle compute to the Nebula network",
     "main": "src/worker.js",
     "bin": {

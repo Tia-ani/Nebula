@@ -1,7 +1,7 @@
 const { io } = require('socket.io-client');
 const { encrypt, decrypt } = require('../shared/chunk');
 
-const socket = io('http://localhost:3000', {
+const socket = io('https://nebula-mk65.onrender.com', {
     query: { type: 'worker' }
 });
 
