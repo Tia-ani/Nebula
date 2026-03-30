@@ -13,7 +13,7 @@ app.use((req, res, next) => {
     next();
 });
 
-app.use(express.static('dashboard'));
+app.use(express.static(require('path').join(__dirname, '../dashboard')));
 
 const server = http.createServer(app);
 const io = new Server(server);
