@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nebula — Try it live</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #080810;
+            --surface: #0e0e1a;
+            --surface2: #13131f;
+            --border: #1e1e30;
+            --border-active: #6d5aff;
+            --purple: #6d5aff;
+            --purple-dim: rgba(109, 90, 255, 0.15);
+            --purple-glow: rgba(109, 90, 255, 0.4);
+            --green: #00e5a0;
+            --green-dim: rgba(0, 229, 160, 0.12);
+            --red: #ff4566;
+            --yellow: #ffd166;
+            --text: #e2e2f0;
+            --text-dim: #6b6b8a;
+            --text-faint: #2e2e4a;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'IBM Plex Mono', monospace;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Grid background */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image:
+                linear-gradient(var(--text-faint) 1px, transparent 1px),
+                linear-gradient(90deg, var(--text-faint) 1px, transparent 1px);
+            background-size: 40px 40px;
+            opacity: 0.3;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .wrapper {
+            position: relative;
+            z-index: 1;
+            max-width: 860px;
+            margin: 0 auto;
+            padding: 48px 32px 80px;
+        }
+
+        /* ── Header ── */
+        .header {
+            margin-bottom: 48px;
+        }
+
+        .logo {
+            display: flex;
+            align-items: baseline;
+            gap: 12px;
+            margin-bottom: 6px;
+        }
+
+        .logo-mark {
+            font-family: 'Space Mono', monospace;
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: var(--purple);
+            letter-spacing: -1px;
+        }
+
+        .logo-tag {
+            font-size: 0.7rem;
+            color: var(--text-dim);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            border: 1px solid var(--border);
+            padding: 2px 8px;
+            border-radius: 3px;
+        }
+
+        .tagline {
+            color: var(--text-dim);
+            font-size: 0.8rem;
+            margin-bottom: 20px;
+        }
+
+        .nav {
+            display: flex;
+            gap: 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .nav a {
+            color: var(--text-dim);
+            text-decoration: none;
+            font-size: 0.78rem;
+            padding: 8px 18px 8px 0;
+            margin-right: 18px;
+            border-bottom: 2px solid transparent;
+            transition: color 0.2s, border-color 0.2s;
+            position: relative;
+            bottom: -1px;
+        }
+
+        .nav a.active {
+            color: var(--purple);
+            border-bottom-color: var(--purple);
+        }
+
+        .nav a:hover { color: var(--text); }
+
+        /* ── Status Bar ── */
+        .status-bar {
+            display: flex;
+            align-items: center;
+            gap: 0;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            margin-bottom: 36px;
+            overflow: hidden;
+        }
+
+        .status-seg {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 14px 20px;
+            border-right: 1px solid var(--border);
+            font-size: 0.78rem;
+            flex: 1;
+        }
+
+        .status-seg:last-child { border-right: none; }
+
+        .status-label { color: var(--text-dim); }
+        .status-val { color: var(--text); font-weight: 500; }
+        .status-val.green { color: var(--green); }
+        .status-val.red { color: var(--red); }
+        .status-val.yellow { color: var(--yellow); }
+
+        .dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--green);
+            flex-shrink: 0;
+        }
+
+        .dot.pulse { animation: blink 1.8s ease-in-out infinite; }
+        .dot.offline { background: var(--red); }
+        .dot.warn { background: var(--yellow); }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; box-shadow: 0 0 0 0 var(--green-dim); }
+            50% { opacity: 0.6; box-shadow: 0 0 0 4px transparent; }
+        }
+
+        /* ── Mode Banner ── */
+        .mode-banner {
+            display: none;
+            align-items: center;
+            gap: 10px;
+            background: rgba(255, 209, 102, 0.07);
+            border: 1px solid rgba(255, 209, 102, 0.25);
+            border-radius: 8px;
+            padding: 12px 18px;
+            margin-bottom: 28px;
+            font-size: 0.78rem;
+            color: var(--yellow);
+        }
+
+        .mode-banner.visible { display: flex; }
+        .mode-banner .icon { font-size: 0.9rem; }
+
+        /* ── Examples ── */
+        .section-label {
+            font-size: 0.68rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 12px;
+        }
+
+        .examples {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-bottom: 28px;
+        }
+
+        .ex-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 14px 16px;
+            cursor: pointer;
+            transition: border-color 0.15s, background 0.15s;
+        }
+
+        .ex-card:hover {
+            border-color: rgba(109, 90, 255, 0.5);
+            background: var(--surface2);
+        }
+
+        .ex-card.active {
+            border-color: var(--purple);
+            background: var(--purple-dim);
+        }
+
+        .ex-type {
+            font-size: 0.65rem;
+            color: var(--purple);
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-bottom: 6px;
+        }
+
+        .ex-desc {
+            font-size: 0.76rem;
+            color: var(--text-dim);
+            line-height: 1.5;
+        }
+
+        /* ── Input ── */
+        .input-wrap {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 14px;
+            transition: border-color 0.2s;
+        }
+
+        .input-wrap:focus-within {
+            border-color: rgba(109, 90, 255, 0.5);
+        }
+
+        textarea {
+            width: 100%;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.85rem;
+            padding: 14px;
+            resize: vertical;
+            min-height: 110px;
+            outline: none;
+            line-height: 1.7;
+            transition: border-color 0.2s;
+        }
+
+        textarea:focus { border-color: rgba(109, 90, 255, 0.4); }
+        textarea::placeholder { color: var(--text-faint); }
+
+        .input-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 14px;
+        }
+
+        .hint { color: var(--text-dim); font-size: 0.72rem; }
+
+        .run-btn {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--purple);
+            color: #fff;
+            border: none;
+            border-radius: 7px;
+            padding: 11px 26px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.1s, box-shadow 0.2s;
+            letter-spacing: 0.3px;
+        }
+
+        .run-btn:hover {
+            background: #7d6dff;
+            box-shadow: 0 0 20px var(--purple-glow);
+        }
+
+        .run-btn:active { transform: scale(0.98); }
+
+        .run-btn:disabled {
+            background: var(--surface2);
+            color: var(--text-dim);
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        /* ── Results ── */
+        .result-wrap {
+            display: none;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 36px;
+        }
+
+        .result-wrap.visible { display: block; animation: slideIn 0.25s ease; }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 14px 20px;
+            border-bottom: 1px solid var(--border);
+            background: var(--surface2);
+        }
+
+        .result-title { font-size: 0.72rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 2px; }
+        .result-meta { font-size: 0.72rem; color: var(--text-dim); }
+        .result-meta .hl { color: var(--green); }
+
+        .result-body { padding: 16px 20px; }
+
+        .result-item {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 7px;
+            padding: 14px 16px;
+            margin-bottom: 10px;
+            animation: fadeUp 0.3s ease both;
+        }
+
+        .result-item:last-child { margin-bottom: 0; }
+
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .result-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 8px;
+            gap: 12px;
+        }
+
+        .task-preview {
+            font-size: 0.72rem;
+            color: var(--text-dim);
+            flex: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .worker-badge {
+            font-size: 0.65rem;
+            color: var(--purple);
+            background: var(--purple-dim);
+            border: 1px solid rgba(109, 90, 255, 0.3);
+            border-radius: 4px;
+            padding: 2px 8px;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .worker-badge.simulated {
+            color: var(--yellow);
+            background: rgba(255, 209, 102, 0.08);
+            border-color: rgba(255, 209, 102, 0.25);
+        }
+
+        .result-text {
+            font-size: 0.84rem;
+            color: var(--text);
+            line-height: 1.65;
+        }
+
+        /* Loading state */
+        .loading-state {
+            padding: 32px 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .loading-row {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            font-size: 0.8rem;
+            color: var(--text-dim);
+        }
+
+        .spinner {
+            width: 14px;
+            height: 14px;
+            border: 2px solid var(--border);
+            border-top-color: var(--purple);
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            flex-shrink: 0;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .loading-done { color: var(--green); }
+        .loading-done .spinner { display: none; }
+        .loading-done::before { content: '✓'; margin-right: 14px; font-size: 0.8rem; }
+
+        /* ── No-workers panel ── */
+        .no-workers-panel {
+            padding: 32px;
+            text-align: center;
+        }
+
+        .no-workers-panel h3 {
+            font-size: 0.9rem;
+            color: var(--text);
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        .no-workers-panel p {
+            font-size: 0.78rem;
+            color: var(--text-dim);
+            margin-bottom: 24px;
+            line-height: 1.6;
+        }
+
+        .cmd-box {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 14px 20px;
+            font-size: 0.82rem;
+            color: var(--green);
+            display: inline-block;
+            margin-bottom: 14px;
+            cursor: pointer;
+            transition: border-color 0.2s;
+            position: relative;
+        }
+
+        .cmd-box:hover { border-color: var(--green); }
+
+        .cmd-box .copy-hint {
+            position: absolute;
+            top: -24px;
+            right: 0;
+            font-size: 0.68rem;
+            color: var(--text-dim);
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .cmd-box:hover .copy-hint { opacity: 1; }
+
+        .copied-toast {
+            position: fixed;
+            bottom: 32px;
+            left: 50%;
+            transform: translateX(-50%) translateY(8px);
+            background: var(--green);
+            color: #000;
+            font-size: 0.78rem;
+            font-weight: 600;
+            padding: 10px 24px;
+            border-radius: 6px;
+            opacity: 0;
+            transition: opacity 0.2s, transform 0.2s;
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        .copied-toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        .divider {
+            border: none;
+            border-top: 1px solid var(--border);
+            margin: 40px 0;
+        }
+
+        /* ── Footer ── */
+        .footer {
+            display: flex;
+            gap: 24px;
+            font-size: 0.73rem;
+            color: var(--text-dim);
+        }
+
+        .footer a {
+            color: var(--text-dim);
+            text-decoration: none;
+            transition: color 0.15s;
+        }
+
+        .footer a:hover { color: var(--purple); }
+
+        @media (max-width: 640px) {
+            .wrapper { padding: 28px 20px 60px; }
+            .examples { grid-template-columns: 1fr; }
+            .status-bar { flex-wrap: wrap; }
+            .status-seg { flex: none; width: 50%; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="wrapper">
+
+    <!-- Header -->
+    <div class="header">
+        <div class="logo">
+            <span class="logo-mark">⚡ Nebula</span>
+            <span class="logo-tag">ALPHA</span>
+        </div>
+        <p class="tagline">Distributed Compute Network — idle devices become a supercomputer</p>
+        <nav class="nav">
+            <a href="/">Dashboard</a>
+            <a href="/demo" class="active">Try it live</a>
+        </nav>
+    </div>
+
+    <!-- Status Bar -->
+    <div class="status-bar">
+        <div class="status-seg">
+            <div class="dot pulse" id="net-dot"></div>
+            <span class="status-label">Network</span>
+            <span class="status-val green" id="net-status">—</span>
+        </div>
+        <div class="status-seg">
+            <span class="status-label">Workers</span>
+            <span class="status-val" id="worker-count">—</span>
+        </div>
+        <div class="status-seg">
+            <span class="status-label">Jobs done</span>
+            <span class="status-val" id="jobs-done">—</span>
+        </div>
+        <div class="status-seg">
+            <span class="status-label">Tasks run</span>
+            <span class="status-val" id="tasks-run">—</span>
+        </div>
+    </div>
+
+    <!-- Simulation mode banner -->
+    <div class="mode-banner" id="sim-banner">
+        <span class="icon">⚠</span>
+        <span>No live workers connected. Running in <strong>simulation mode</strong> — responses are mocked to show how the network behaves. <a href="#join" style="color:var(--yellow);text-decoration:underline">Add a real worker →</a></span>
+    </div>
+
+    <!-- Examples -->
+    <div class="section-label">Example prompts</div>
+    <div class="examples">
+        <div class="ex-card" onclick="selectExample(this, ['Classify as positive or negative: I loved this product!', 'Classify as positive or negative: Terrible experience, never again.', 'Classify as positive or negative: It was okay, nothing special.'])">
+            <div class="ex-type">Sentiment</div>
+            <div class="ex-desc">Classify 3 reviews across multiple workers</div>
+        </div>
+        <div class="ex-card" onclick="selectExample(this, ['Summarise in one sentence: Artificial intelligence is transforming industries by automating tasks that previously required human expertise and judgment.', 'Summarise in one sentence: Distributed computing splits work across many devices, dramatically increasing throughput while reducing cost per computation.'])">
+            <div class="ex-type">Summarise</div>
+            <div class="ex-desc">Compress two paragraphs to single sentences</div>
+        </div>
+        <div class="ex-card" onclick="selectExample(this, ['What is the capital of France?', 'What is 17 multiplied by 6?', 'Name one planet beyond Earth in our solar system.'])">
+            <div class="ex-type">Q&amp;A</div>
+            <div class="ex-desc">Run 3 questions simultaneously across the network</div>
+        </div>
+    </div>
+
+    <!-- Input -->
+    <div class="section-label">Your tasks</div>
+    <div class="input-wrap">
+        <textarea id="task-input" placeholder="Enter one task per line. Each line = one chunk sent to a different worker.
+
+Example:
+Classify as positive or negative: Great product!
+Classify as positive or negative: Terrible service.
+Summarise in one sentence: The quick brown fox..."></textarea>
+        <div class="input-footer">
+            <span class="hint">Each line → one task → distributed across workers</span>
+            <button class="run-btn" id="run-btn" onclick="run()">
+                <span>Run on Nebula</span>
+                <span>⚡</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Results -->
+    <div class="result-wrap" id="result-wrap">
+        <div class="result-header">
+            <span class="result-title">Results</span>
+            <span class="result-meta" id="result-meta"></span>
+        </div>
+        <div id="result-body"></div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- Join section -->
+    <div id="join">
+        <div class="section-label">Contribute compute → earn credits</div>
+        <p style="font-size:0.8rem;color:var(--text-dim);margin-bottom:16px;line-height:1.7">
+            Got an idle laptop? Run one command. Your device joins the network, processes chunks silently in the background, and earns credits for every task it handles.
+        </p>
+        <p style="font-size:0.75rem;color:var(--text-dim);margin-bottom:10px;">Requires <a href="https://ollama.ai" target="_blank" style="color:var(--purple)">Ollama</a> + llama3.2</p>
+        <div class="cmd-box" onclick="copyCmd(this, 'npx nebula-worker start --master https://nebula-mk65.onrender.com')">
+            <span class="copy-hint">click to copy</span>
+            npx nebula-worker start --master https://nebula-mk65.onrender.com
+        </div>
+    </div>
+
+    <hr class="divider">
+
+    <div class="footer">
+        <span>Built by <a href="https://twitter.com/KhuranaAni62798">@KhuranaAni62798</a></span>
+        <a href="https://github.com/Tia-ani/Nebula">GitHub</a>
+        <a href="https://www.npmjs.com/package/nebula-worker">npm</a>
+        <a href="/">Dashboard</a>
+    </div>
+
+</div>
+
+<div class="copied-toast" id="toast">Copied!</div>
+
+<script>
+    const MASTER = window.location.origin;
+    const API_KEY = 'nebula-test-key-123';
+
+    // ── Simulated responses for when no workers exist ──
+    const SIM_RESPONSES = {
+        positive: ['Positive.', 'Positive sentiment detected.', 'Positive.'],
+        negative: ['Negative.', 'Negative sentiment detected.', 'Negative.'],
+        neutral:  ['Neutral.', 'Mixed/neutral sentiment.'],
+        capital: (t) => {
+            const m = t.match(/capital of (.+)\?/i);
+            if (m) {
+                const map = { france:'Paris', india:'New Delhi', japan:'Tokyo', usa:'Washington D.C.', uk:'London', germany:'Berlin', australia:'Canberra' };
+                const k = m[1].toLowerCase();
+                return map[k] || `The capital of ${m[1]} is a well-known city.`;
+            }
+            return null;
+        },
+        default: (task) => {
+            const t = task.toLowerCase();
+            if (t.includes('positive') && t.includes('negative')) {
+                if (t.includes('loved') || t.includes('great') || t.includes('amazing') || t.includes('excellent')) return 'Positive.';
+                if (t.includes('terrible') || t.includes('awful') || t.includes('worst') || t.includes('never again')) return 'Negative.';
+                return 'Neutral.';
+            }
+            if (t.startsWith('summarise') || t.startsWith('summarize')) {
+                const content = task.replace(/summaris[e|z].*?:/i, '').trim();
+                const words = content.split(' ');
+                return words.slice(0, 12).join(' ') + (words.length > 12 ? '...' : '');
+            }
+            if (t.includes('2 + 2') || t.includes('2+2')) return '4';
+            if (t.includes('17') && t.includes('6')) return '102';
+            if (t.includes('capital')) return SIM_RESPONSES.capital(task) || 'This is a simulation — connect a real worker for live AI inference.';
+            if (t.includes('planet')) return 'Mars.';
+            return '[Simulated] This response would come from a real AI worker. Run npx nebula-worker to contribute compute.';
+        }
+    };
+
+    function simulateResponse(task) {
+        return new Promise(res => {
+            const delay = 400 + Math.random() * 600;
+            setTimeout(() => res(SIM_RESPONSES.default(task)), delay);
+        });
+    }
+
+    // ── Worker assignment simulation ──
+    const FAKE_WORKERS = ['worker-a3f1', 'worker-b8d2', 'worker-c1e9'];
+
+    function assignWorker(index, total) {
+        if (total === 1) return FAKE_WORKERS[0];
+        return FAKE_WORKERS[index % FAKE_WORKERS.length];
+    }
+
+    // ── Status polling ──
+    let liveWorkers = 0;
+
+    async function fetchStatus() {
+        try {
+            const r = await fetch(`${MASTER}/api/v1/status`);
+            const d = await r.json();
+            liveWorkers = d.workers;
+
+            document.getElementById('worker-count').textContent = d.workers;
+            document.getElementById('worker-count').className = 'status-val ' + (d.workers > 0 ? 'green' : 'red');
+            document.getElementById('jobs-done').textContent = d.jobsCompleted;
+            document.getElementById('tasks-run').textContent = d.tasksProcessed;
+
+            const dot = document.getElementById('net-dot');
+            const netStatus = document.getElementById('net-status');
+
+            if (d.ready) {
+                dot.className = 'dot pulse';
+                netStatus.textContent = 'Online';
+                netStatus.className = 'status-val green';
+                document.getElementById('sim-banner').classList.remove('visible');
+            } else {
+                dot.className = 'dot warn';
+                netStatus.textContent = 'No workers';
+                netStatus.className = 'status-val yellow';
+                document.getElementById('sim-banner').classList.add('visible');
+            }
+        } catch (e) {
+            document.getElementById('net-dot').className = 'dot offline';
+            document.getElementById('net-status').textContent = 'Offline';
+            document.getElementById('net-status').className = 'status-val red';
+            document.getElementById('sim-banner').classList.add('visible');
+            liveWorkers = 0;
+        }
+    }
+
+    // ── Example cards ──
+    function selectExample(card, tasks) {
+        document.querySelectorAll('.ex-card').forEach(c => c.classList.remove('active'));
+        card.classList.add('active');
+        document.getElementById('task-input').value = tasks.join('\n');
+    }
+
+    // ── Main run function ──
+    async function run() {
+        const raw = document.getElementById('task-input').value.trim();
+        if (!raw) return;
+
+        const tasks = raw.split('\n').map(t => t.trim()).filter(Boolean);
+        if (tasks.length === 0) return;
+
+        const btn = document.getElementById('run-btn');
+        const wrap = document.getElementById('result-wrap');
+        const body = document.getElementById('result-body');
+        const meta = document.getElementById('result-meta');
+
+        btn.disabled = true;
+        btn.innerHTML = '<div class="spinner" style="border-top-color:#fff"></div> Running...';
+        wrap.className = 'result-wrap visible';
+        meta.innerHTML = '';
+
+        // Show loading steps
+        body.innerHTML = `
+            <div class="loading-state">
+                <div class="loading-row" id="ls-1">
+                    <div class="spinner"></div>
+                    <span>Splitting ${tasks.length} task${tasks.length > 1 ? 's' : ''} into chunks...</span>
+                </div>
+                <div class="loading-row" id="ls-2" style="opacity:0.3">
+                    <div class="spinner"></div>
+                    <span>Routing to available workers...</span>
+                </div>
+                <div class="loading-row" id="ls-3" style="opacity:0.3">
+                    <div class="spinner"></div>
+                    <span>Processing in parallel...</span>
+                </div>
+            </div>`;
+
+        const start = Date.now();
+
+        await sleep(350);
+        document.getElementById('ls-1').className = 'loading-row loading-done';
+        document.getElementById('ls-2').style.opacity = '1';
+        await sleep(300);
+        document.getElementById('ls-2').className = 'loading-row loading-done';
+        document.getElementById('ls-3').style.opacity = '1';
+
+        let results;
+        let isSimulated = false;
+
+        if (liveWorkers > 0) {
+            // Real network path
+            try {
+                const r = await fetch(`${MASTER}/api/v1/run`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY },
+                    body: JSON.stringify({ tasks })
+                });
+                const d = await r.json();
+
+                if (!r.ok) {
+                    if (r.status === 503) {
+                        // Fell offline between check and run — drop into sim
+                        isSimulated = true;
+                        results = await Promise.all(tasks.map(simulateResponse));
+                        liveWorkers = 0;
+                        document.getElementById('sim-banner').classList.add('visible');
+                    } else {
+                        throw new Error(d.error || 'Unknown error');
+                    }
+                } else {
+                    results = d.result;
+                }
+            } catch (err) {
+                body.innerHTML = `<div style="padding:20px;color:var(--red);font-size:0.82rem">Error: ${err.message}</div>`;
+                btn.disabled = false;
+                btn.innerHTML = '<span>Run on Nebula</span><span>⚡</span>';
+                return;
+            }
+        } else {
+            // Simulation path
+            isSimulated = true;
+            results = await Promise.all(tasks.map(simulateResponse));
+        }
+
+        document.getElementById('ls-3').className = 'loading-row loading-done';
+        await sleep(200);
+
+        const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+        const modeTag = isSimulated
+            ? `<span style="color:var(--yellow)">simulated</span>`
+            : `<span class="hl">live</span>`;
+
+        meta.innerHTML = `${tasks.length} tasks · ${elapsed}s · ${modeTag}`;
+
+        body.innerHTML = `<div class="result-body">${
+            results.map((r, i) => {
+                const workerLabel = isSimulated
+                    ? `<span class="worker-badge simulated">sim-${FAKE_WORKERS[i % FAKE_WORKERS.length].slice(-4)}</span>`
+                    : `<span class="worker-badge">worker-${(i % Math.max(liveWorkers, 1)) + 1}</span>`;
+
+                return `
+                <div class="result-item" style="animation-delay:${i * 80}ms">
+                    <div class="result-item-header">
+                        <span class="task-preview">↳ ${tasks[i].length > 65 ? tasks[i].slice(0, 65) + '…' : tasks[i]}</span>
+                        ${workerLabel}
+                    </div>
+                    <div class="result-text">${r}</div>
+                </div>`;
+            }).join('')
+        }</div>`;
+
+        btn.disabled = false;
+        btn.innerHTML = '<span>Run on Nebula</span><span>⚡</span>';
+        fetchStatus();
+    }
+
+    // ── Copy command ──
+    function copyCmd(el, text) {
+        navigator.clipboard.writeText(text).then(() => {
+            const toast = document.getElementById('toast');
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 2000);
+        });
+    }
+
+    function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+    // Boot
+    fetchStatus();
+    setInterval(fetchStatus, 6000);
+</script>
+</body>
+</html>
