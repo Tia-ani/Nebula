@@ -158,7 +158,7 @@ Worker1  Worker2  Worker3  ...
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/Tia-ani/nebula_v2
+git clone https://github.com/Tia-ani/Nebula
 cd nebula_v2
 
 # 2. Install dependencies
