@@ -13,7 +13,8 @@ app.use((req, res, next) => {
     next();
 });
 
-app.use(express.static(require('path').join(__dirname, '../dashboard')));
+app.get('/', (req, res) => res.sendFile(require('path').join(__dirname, '../dashboard/landing.html')));
+app.get('/dashboard', (req, res) => res.sendFile(require('path').join(__dirname, '../dashboard/index.html')));
 
 const server = http.createServer(app);
 const io = new Server(server);
