@@ -249,6 +249,10 @@ app.post('/job', (req, res) => {
     });
 });
 
+app.get('/demo', (req, res) => {
+    res.sendFile(require('path').join(__dirname, '../dashboard/demo.html'));
+});
+
 server.listen(3000, () => {
     console.log('Nebula Master Node running on port 3000');
 });
