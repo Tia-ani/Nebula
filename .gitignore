@@ -1,1 +1,24 @@
 node_modules/
+
+# User data (contains passwords and sensitive info)
+master/nebula-data.json
+
+# Documentation files (too many)
+*.md
+!README.md
+
+# IDE
+.vscode/
+.idea/
+
+# Environment variables
+.env
+.env.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db

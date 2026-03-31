@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Superuser Dashboard - Nebula</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #06060f;
+            --surface: #0c0c18;
+            --border: #1a1a2e;
+            --purple: #6d5aff;
+            --green: #00e5a0;
+            --yellow: #ffd166;
+            --red: #ff6b6b;
+            --text: #e8e8f4;
+            --text-dim: #6a6a88;
+            --mono: 'DM Mono', monospace;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'DM Sans', sans-serif;
+            padding: 20px;
+        }
+
+        .nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 0;
+            margin-bottom: 40px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .logo {
+            font-family: var(--mono);
+            font-size: 1.3rem;
+            color: var(--purple);
+            letter-spacing: 2px;
+        }
+
+        .superuser-badge {
+            background: rgba(255,107,107,0.2);
+            color: var(--red);
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            margin-left: 12px;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .btn-logout {
+            padding: 8px 20px;
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            border-radius: 6px;
+            cursor: pointer;
+            font-family: 'DM Sans', sans-serif;
+            transition: all 0.2s;
+        }
+
+        .btn-logout:hover {
+            border-color: var(--red);
+            color: var(--red);
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .welcome {
+            margin-bottom: 40px;
+        }
+
+        .welcome h1 {
+            font-size: 2.5rem;
+            margin-bottom: 8px;
+        }
+
+        .welcome p {
+            color: var(--text-dim);
+            font-size: 1.1rem;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 16px;
+            margin-bottom: 40px;
+        }
+
+        .stat-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+        }
+
+        .stat-label {
+            color: var(--text-dim);
+            font-size: 0.75rem;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 600;
+            color: var(--purple);
+            font-family: var(--mono);
+        }
+
+        .section {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 28px;
+            margin-bottom: 24px;
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+
+        .section-title {
+            font-size: 1.3rem;
+            font-weight: 600;
+        }
+
+        .pulse-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--green);
+            font-size: 0.85rem;
+        }
+
+        .pulse-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--green);
+            border-radius: 50%;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .data-table th {
+            text-align: left;
+            padding: 12px;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-dim);
+            font-size: 0.85rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .data-table td {
+            padding: 16px 12px;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.9rem;
+        }
+
+        .data-table tr:hover {
+            background: rgba(109,90,255,0.05);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .badge.contributor {
+            background: rgba(109,90,255,0.2);
+            color: var(--purple);
+        }
+
+        .badge.developer {
+            background: rgba(0,229,160,0.2);
+            color: var(--green);
+        }
+
+        .badge.superuser {
+            background: rgba(255,107,107,0.2);
+            color: var(--red);
+        }
+
+        .badge.active {
+            background: rgba(0,229,160,0.2);
+            color: var(--green);
+        }
+
+        .badge.inactive {
+            background: rgba(106,106,136,0.2);
+            color: var(--text-dim);
+        }
+
+        .worker-badge {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-family: var(--mono);
+            font-size: 0.8rem;
+            display: inline-block;
+            margin: 4px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-dim);
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+        }
+
+        @media(max-width: 1200px) {
+            .stats-grid {
+                grid-template-columns: repeat(3, 1fr);
+            }
+            .grid-2 {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="nav">
+            <div>
+                <span class="logo">NEBULA</span>
+                <span class="superuser-badge">SUPERUSER</span>
+            </div>
+            <div class="user-info">
+                <button class="btn-logout" onclick="logout()">Logout</button>
+            </div>
+        </div>
+
+        <div class="welcome">
+            <h1>Superuser Dashboard</h1>
+            <p>Complete network overview and management</p>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">Total Users</div>
+                <div class="stat-value" id="total-users">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Contributors</div>
+                <div class="stat-value" style="color: var(--purple);" id="total-contributors">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Developers</div>
+                <div class="stat-value" style="color: var(--green);" id="total-developers">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Active Workers</div>
+                <div class="stat-value" style="color: var(--yellow);" id="active-workers">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Total Jobs</div>
+                <div class="stat-value" style="color: var(--text);" id="total-jobs">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Credits Flow</div>
+                <div class="stat-value" style="color: var(--green);" id="credits-flow">0</div>
+            </div>
+        </div>
+
+        <div class="grid-2">
+            <div class="section">
+                <div class="section-header">
+                    <h2 class="section-title">Active Workers</h2>
+                    <div class="pulse-indicator">
+                        <div class="pulse-dot"></div>
+                        <span>Live</span>
+                    </div>
+                </div>
+                <div id="workers-list">
+                    <div class="empty-state">No active workers</div>
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="section-header">
+                    <h2 class="section-title">Recent Jobs</h2>
+                </div>
+                <div id="jobs-list">
+                    <div class="empty-state">No jobs yet</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-header">
+                <h2 class="section-title">All Users</h2>
+            </div>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Role</th>
+                        <th>Credits</th>
+                        <th>Joined</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="users-table">
+                    <tr>
+                        <td colspan="6" class="empty-state">Loading...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const token = localStorage.getItem('nebula-token');
+        const user = JSON.parse(localStorage.getItem('nebula-user') || '{}');
+
+        if (!token || user.role !== 'superuser') {
+            window.location.href = '/auth';
+        }
+
+        const socket = io();
+
+        // Load all data
+        async function loadAllData() {
+            try {
+                const response = await fetch('/api/superuser/stats', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await response.json();
+                
+                if (response.ok) {
+                    updateStats(data);
+                    updateUsersTable(data.users || []);
+                }
+            } catch (error) {
+                console.error('Failed to load data:', error);
+            }
+        }
+
+        function updateStats(data) {
+            document.getElementById('total-users').textContent = data.totalUsers || 0;
+            document.getElementById('total-contributors').textContent = data.totalContributors || 0;
+            document.getElementById('total-developers').textContent = data.totalDevelopers || 0;
+            document.getElementById('active-workers').textContent = data.activeWorkers || 0;
+            document.getElementById('total-jobs').textContent = data.totalJobs || 0;
+            document.getElementById('credits-flow').textContent = data.creditsFlow || 0;
+        }
+
+        function updateUsersTable(users) {
+            const tbody = document.getElementById('users-table');
+            
+            if (users.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No users yet</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = users.map(u => `
+                <tr>
+                    <td>${u.name}</td>
+                    <td>${u.email}</td>
+                    <td><span class="badge ${u.role}">${u.role || 'none'}</span></td>
+                    <td>${u.credits || 0}</td>
+                    <td>${new Date(u.createdAt).toLocaleDateString()}</td>
+                    <td><span class="badge ${u.active ? 'active' : 'inactive'}">${u.active ? 'Active' : 'Inactive'}</span></td>
+                </tr>
+            `).join('');
+        }
+
+        // Listen to real-time updates
+        socket.on('dashboard-update', (data) => {
+            document.getElementById('active-workers').textContent = data.workerCount || 0;
+            
+            // Update workers list
+            const workersList = document.getElementById('workers-list');
+            if (data.workers && data.workers.length > 0) {
+                workersList.innerHTML = data.workers.map(w => 
+                    `<div class="worker-badge">${w}</div>`
+                ).join('');
+            } else {
+                workersList.innerHTML = '<div class="empty-state">No active workers</div>';
+            }
+
+            // Update jobs list
+            const jobsList = document.getElementById('jobs-list');
+            if (data.jobs && data.jobs.length > 0) {
+                jobsList.innerHTML = data.jobs.slice(-5).reverse().map(j => `
+                    <div style="padding: 12px; border-bottom: 1px solid var(--border);">
+                        <div style="font-family: var(--mono); font-size: 0.8rem; color: var(--text-dim);">${j.id.substring(0, 16)}...</div>
+                        <div style="margin-top: 4px;">
+                            <span style="font-size: 0.85rem;">${j.chunks} chunks</span>
+                            <span class="badge ${j.status}" style="margin-left: 12px;">${j.status}</span>
+                        </div>
+                    </div>
+                `).join('');
+            } else {
+                jobsList.innerHTML = '<div class="empty-state">No jobs yet</div>';
+            }
+        });
+
+        function logout() {
+            localStorage.removeItem('nebula-token');
+            localStorage.removeItem('nebula-user');
+            window.location.href = '/auth';
+        }
+
+        loadAllData();
+    </script>
+</body>
+</html>

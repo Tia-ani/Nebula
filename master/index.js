@@ -4,6 +4,8 @@ const { Server } = require('socket.io');
 const { splitIntoChunks, assembleResults, encrypt, decrypt } = require('./chunk');
 const { v4: uuidv4 } = require('uuid');
 const crypto = require('crypto');
+const auth = require('./auth');
+const connectDB = require('./db');
 
 const app = express();
 app.use(express.json());
@@ -13,8 +15,17 @@ app.use((req, res, next) => {
     next();
 });
 
+// Connect to MongoDB
+connectDB();
+
+// Serve static pages
 app.get('/', (req, res) => res.sendFile(require('path').join(__dirname, '../dashboard/landing.html')));
 app.get('/dashboard', (req, res) => res.sendFile(require('path').join(__dirname, '../dashboard/index.html')));
+app.get('/auth', (req, res) => res.sendFile(require('path').join(__dirname, '../dashboard/auth.html')));
+app.get('/role-select', (req, res) => res.sendFile(require('path').join(__dirname, '../dashboard/role-select.html')));
+app.get('/contributor-dashboard', (req, res) => res.sendFile(require('path').join(__dirname, '../dashboard/contributor-dashboard.html')));
+app.get('/developer-dashboard', (req, res) => res.sendFile(require('path').join(__dirname, '../dashboard/developer-dashboard.html')));
+app.get('/superuser-dashboard', (req, res) => res.sendFile(require('path').join(__dirname, '../dashboard/superuser-dashboard.html')));
 
 const server = http.createServer(app);
 const io = new Server(server);
@@ -254,6 +265,159 @@ app.get('/demo', (req, res) => {
     res.sendFile(require('path').join(__dirname, '../dashboard/demo.html'));
 });
 
+// ─── Authentication Routes ───────────────────────────────────────────
+
+app.post('/api/auth/signup', async (req, res) => {
+    const { name, email, password } = req.body;
+    const result = await auth.signup(name, email, password);
+    
+    if (result.error) {
+        return res.status(400).json({ error: result.error });
+    }
+    
+    res.json(result);
+});
+
+app.post('/api/auth/login', async (req, res) => {
+    const { email, password } = req.body;
+    const result = await auth.login(email, password);
+    
+    if (result.error) {
+        return res.status(401).json({ error: result.error });
+    }
+    
+    res.json(result);
+});
+
+// Middleware to verify authentication
+async function requireAuth(req, res, next) {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ error: 'Authentication required' });
+    }
+    
+    const token = authHeader.substring(7);
+    const user = await auth.verifyToken(token);
+    
+    if (!user) {
+        return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+    
+    req.user = user;
+    next();
+}
+
+// Middleware to require specific role
+function requireRole(...roles) {
+    return (req, res, next) => {
+        if (!roles.includes(req.user.role)) {
+            return res.status(403).json({ error: 'Insufficient permissions' });
+        }
+        next();
+    };
+}
+
+app.post('/api/auth/select-role', requireAuth, async (req, res) => {
+    const { role } = req.body;
+    const result = await auth.selectRole(req.user.email, role);
+    
+    if (result.error) {
+        return res.status(400).json({ error: result.error });
+    }
+    
+    res.json(result);
+});
+
+// ─── Contributor Routes ───────────────────────────────────────────
+
+app.get('/api/contributor/stats', requireAuth, requireRole('contributor'), async (req, res) => {
+    const stats = await auth.getUserStats(req.user.email);
+    res.json(stats);
+});
+
+// ─── Developer Routes ───────────────────────────────────────────
+
+app.get('/api/developer/stats', requireAuth, requireRole('developer'), async (req, res) => {
+    const stats = await auth.getUserStats(req.user.email);
+    stats.activeWorkers = workers.length;
+    res.json(stats);
+});
+
+app.post('/api/developer/submit-job', requireAuth, requireRole('developer'), async (req, res) => {
+    const { tasks, priority = 'normal' } = req.body;
+    
+    if (!tasks || !Array.isArray(tasks) || tasks.length === 0) {
+        return res.status(400).json({ error: 'tasks must be a non-empty array' });
+    }
+    
+    if (workers.length === 0) {
+        return res.status(503).json({ error: 'No workers available right now' });
+    }
+    
+    // Calculate cost
+    const baseCost = tasks.length * 10;
+    const priorityMultiplier = { normal: 1, high: 1.5, urgent: 2 }[priority] || 1;
+    const totalCost = Math.ceil(baseCost * priorityMultiplier);
+    
+    // Check if user has enough credits
+    const user = await auth.getUserByEmail(req.user.email);
+    if (user.credits < totalCost) {
+        return res.status(400).json({ 
+            error: 'Insufficient credits',
+            required: totalCost,
+            available: user.credits
+        });
+    }
+    
+    // Deduct credits
+    await auth.updateUserCredits(req.user.email, totalCost, 'subtract');
+    user.creditsSpent = (user.creditsSpent || 0) + totalCost;
+    user.jobsSubmitted = (user.jobsSubmitted || 0) + 1;
+    await user.save();
+    
+    // Submit job (reuse existing job submission logic)
+    const jobId = uuidv4();
+    jobs[jobId] = {
+        totalChunks: 0,
+        pendingResults: [],
+        workerChunkMap: {},
+        res
+    };
+
+    const chunks = splitIntoChunks(tasks, workers.length);
+    jobs[jobId].totalChunks = chunks.length;
+
+    console.log(`[Developer Job] ${req.user.email} - Job ${jobId} - ${chunks.length} chunks - ${totalCost} credits`);
+
+    recentJobs.push({ id: jobId, chunks: chunks.length, status: 'running' });
+    emitDashboardUpdate();
+
+    chunks.forEach((chunk, index) => {
+        const worker = workers[index % workers.length];
+        let payload;
+        if (worker.type === 'browser-worker') {
+            payload = 'PLAIN:' + JSON.stringify({ jobId, chunk });
+        } else {
+            payload = encrypt({ jobId, chunk }, worker.sessionKey);
+        }
+        jobs[jobId].workerChunkMap[worker.id] = chunk;
+        io.to(worker.id).emit('task-chunk', { chunk: payload });
+    });
+});
+
+// ─── Superuser Routes ───────────────────────────────────────────
+
+app.get('/api/superuser/stats', requireAuth, requireRole('superuser'), async (req, res) => {
+    const stats = await auth.getSuperuserStats();
+    stats.activeWorkers = workers.length;
+    stats.totalJobs = jobsCompleted;
+    res.json(stats);
+});
+
 server.listen(3000, () => {
     console.log('Nebula Master Node running on port 3000');
+    console.log('\n=== Default Superuser Account ===');
+    console.log('Email: founder@nebula.com');
+    console.log('Password: nebula2024');
+    console.log('================================\n');
 });
