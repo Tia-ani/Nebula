@@ -110,13 +110,17 @@ const ContributorDashboard: React.FC = () => {
           return;
         }
 
-        setWorkerStates(prev => ({ ...prev, cpu: true }));
+        // Download worker script
         const user = JSON.parse(localStorage.getItem('nebula-user') || '{}');
+        downloadWorkerScript(user.email, false);
+        
+        setWorkerStates(prev => ({ ...prev, cpu: true }));
         alert(
-          'CPU Worker Instructions:\n\n' +
-          '1. Open a terminal\n' +
-          `2. Run: npx nebula-worker start --master http://localhost:3000 --email ${user.email}\n` +
-          '3. Keep the terminal open while earning credits\n\n' +
+          'Worker script downloaded!\n\n' +
+          '1. Open your Downloads folder\n' +
+          '2. Double-click: start-nebula-worker.sh\n' +
+          '   (or run: bash start-nebula-worker.sh)\n' +
+          '3. Keep the terminal open to earn credits\n\n' +
           'You earn 50 credits per task!'
         );
       }
@@ -140,17 +144,72 @@ const ContributorDashboard: React.FC = () => {
           return;
         }
 
-        setWorkerStates(prev => ({ ...prev, gpu: true }));
+        // Download GPU worker script
         const user = JSON.parse(localStorage.getItem('nebula-user') || '{}');
+        downloadWorkerScript(user.email, true);
+
+        setWorkerStates(prev => ({ ...prev, gpu: true }));
         alert(
-          'GPU Worker Instructions:\n\n' +
-          '1. Open a terminal\n' +
-          `2. Run: npx nebula-worker start --gpu --master http://localhost:3000 --email ${user.email}\n` +
-          '3. Keep the terminal open while earning credits\n\n' +
+          'GPU Worker script downloaded!\n\n' +
+          '1. Open your Downloads folder\n' +
+          '2. Double-click: start-nebula-worker.sh\n' +
+          '   (or run: bash start-nebula-worker.sh)\n' +
+          '3. Keep the terminal open to earn credits\n\n' +
           'You earn 100 credits per task!'
         );
       }
     }
+  };
+
+  const downloadWorkerScript = (email: string, isGPU: boolean) => {
+    const masterUrl = window.location.origin;
+    const gpuFlag = isGPU ? ' --gpu' : '';
+    
+    const scriptContent = `#!/bin/bash
+# Nebula Worker Auto-Start Script
+# Generated for: ${email}
+
+echo "🚀 Starting Nebula Worker..."
+echo "Email: ${email}"
+echo "Type: ${isGPU ? 'GPU' : 'CPU'}"
+echo "Master: ${masterUrl}"
+echo ""
+
+# Check if Ollama is running
+if ! curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
+    echo "❌ Ollama is not running!"
+    echo ""
+    echo "Please start Ollama first:"
+    echo "  1. Open Ollama app"
+    echo "  2. Or run: ollama serve"
+    echo ""
+    exit 1
+fi
+
+# Check if llama3.2 model is installed
+if ! ollama list | grep -q "llama3.2"; then
+    echo "📥 Installing llama3.2 model..."
+    ollama pull llama3.2
+fi
+
+echo "✅ Ollama is ready!"
+echo ""
+echo "Starting worker... Press Ctrl+C to stop"
+echo ""
+
+# Start the worker
+npx nebula-worker start --master ${masterUrl} --email ${email}${gpuFlag}
+`;
+
+    const blob = new Blob([scriptContent], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'start-nebula-worker.sh';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   const checkOllama = async (): Promise<boolean> => {
