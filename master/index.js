@@ -361,6 +361,24 @@ app.post('/api/auth/select-role', requireAuth, async (req, res) => {
 
 // ─── Contributor Routes ───────────────────────────────────────────
 
+app.get('/api/contributor/check-ollama', async (req, res) => {
+    try {
+        const response = await fetch('http://localhost:11434/api/tags');
+        if (response.ok) {
+            const data = await response.json();
+            res.json({ 
+                installed: true, 
+                running: true,
+                models: data.models || []
+            });
+        } else {
+            res.json({ installed: false, running: false });
+        }
+    } catch (error) {
+        res.json({ installed: false, running: false });
+    }
+});
+
 app.get('/api/contributor/stats', requireAuth, requireRole('contributor'), async (req, res) => {
     const stats = await auth.getUserStats(req.user.email);
     stats.activeWorkers = workers.length;

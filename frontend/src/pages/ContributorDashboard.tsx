@@ -101,8 +101,14 @@ const ContributorDashboard: React.FC = () => {
         const hasOllama = await checkOllama();
         if (!hasOllama) {
           const install = window.confirm(
-            'Ollama is not installed. Ollama is required for CPU workers.\n\n' +
-            'Would you like to see installation instructions?'
+            'Ollama is not running or not installed.\n\n' +
+            'Ollama is required for CPU workers.\n\n' +
+            'Steps:\n' +
+            '1. Install Ollama from ollama.ai\n' +
+            '2. Run: ollama serve\n' +
+            '3. Run: ollama pull llama3.2\n' +
+            '4. Come back and click Start again\n\n' +
+            'Click OK to open Ollama download page.'
           );
           if (install) {
             window.open('https://ollama.ai/download', '_blank');
@@ -110,7 +116,7 @@ const ContributorDashboard: React.FC = () => {
           return;
         }
 
-        // Download worker script
+        // Ollama is running, download worker script
         const user = JSON.parse(localStorage.getItem('nebula-user') || '{}');
         downloadWorkerScript(user.email, false);
         
@@ -214,9 +220,11 @@ npx nebula-worker start --master ${masterUrl} --email ${email}${gpuFlag}
 
   const checkOllama = async (): Promise<boolean> => {
     try {
-      const response = await fetch('http://localhost:11434/api/tags');
-      return response.ok;
-    } catch {
+      const response = await fetch(`${window.location.origin}/api/contributor/check-ollama`);
+      const data = await response.json();
+      return data.running === true;
+    } catch (error) {
+      console.log('Ollama check failed:', error);
       return false;
     }
   };
