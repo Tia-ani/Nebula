@@ -6,9 +6,12 @@ const { v4: uuidv4 } = require('uuid');
 const crypto = require('crypto');
 const auth = require('./auth');
 const connectDB = require('./db');
+const path = require('path');
+const cors = require('cors');
 
 const app = express();
 app.use(express.json());
+app.use(cors());
 
 app.use((req, res, next) => {
     res.setHeader('Cache-Control', 'no-store');
@@ -18,17 +21,18 @@ app.use((req, res, next) => {
 // Connect to MongoDB
 connectDB();
 
-// Serve static pages
-app.get('/', (req, res) => res.sendFile(require('path').join(__dirname, '../dashboard/landing.html')));
-app.get('/dashboard', (req, res) => res.sendFile(require('path').join(__dirname, '../dashboard/index.html')));
-app.get('/auth', (req, res) => res.sendFile(require('path').join(__dirname, '../dashboard/auth.html')));
-app.get('/role-select', (req, res) => res.sendFile(require('path').join(__dirname, '../dashboard/role-select.html')));
-app.get('/contributor-dashboard', (req, res) => res.sendFile(require('path').join(__dirname, '../dashboard/contributor-dashboard.html')));
-app.get('/developer-dashboard', (req, res) => res.sendFile(require('path').join(__dirname, '../dashboard/developer-dashboard.html')));
-app.get('/superuser-dashboard', (req, res) => res.sendFile(require('path').join(__dirname, '../dashboard/superuser-dashboard.html')));
+// Serve React build in production
+const frontendBuild = path.join(__dirname, '../frontend/build');
+app.use(express.static(frontendBuild));
 
+// API routes (defined before catch-all)
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+    cors: {
+        origin: "http://localhost:3001",
+        methods: ["GET", "POST"]
+    }
+});
 
 let workers = [];
 let jobs = {};
@@ -49,12 +53,13 @@ function emitDashboardUpdate() {
 
 io.on('connection', (socket) => {
     const type = socket.handshake.query.type;
+    const userEmail = socket.handshake.query.userEmail; // Get user email from connection
 
     if (type === 'worker' || type === 'browser-worker') {
-        console.log(`${type} connected: ${socket.id}`);
+        console.log(`${type} connected: ${socket.id}${userEmail ? ` (${userEmail})` : ''}`);
 
         const sessionKey = crypto.randomBytes(32);
-        workers.push({ id: socket.id, type, sessionKey });
+        workers.push({ id: socket.id, type, sessionKey, userEmail });
 
         // Send session key to worker immediately on connect
         socket.emit('session-key', sessionKey.toString('hex'));
@@ -62,7 +67,7 @@ io.on('connection', (socket) => {
         emitDashboardUpdate();
     }
 
-    socket.on('chunk-result', (data) => {
+    socket.on('chunk-result', async (data) => {
         let jobId, result;
 
         const worker = workers.find(w => w.id === socket.id);
@@ -82,7 +87,24 @@ io.on('connection', (socket) => {
         if (!job) return;
 
         job.pendingResults.push(result);
+        const chunkSize = job.workerChunkMap[socket.id]?.length || 0;
         delete job.workerChunkMap[socket.id];
+
+        // Credit the contributor for completing this chunk
+        if (worker.userEmail && chunkSize > 0) {
+            const creditsPerTask = worker.type === 'browser-worker' ? 10 : worker.type === 'gpu-worker' ? 100 : 50;
+            const creditsEarned = chunkSize * creditsPerTask;
+            
+            try {
+                await auth.updateUserCredits(worker.userEmail, creditsEarned, 'add');
+                console.log(`Credited ${creditsEarned} credits to ${worker.userEmail} for ${chunkSize} tasks`);
+                
+                // Notify the worker about credits earned
+                socket.emit('credits-earned', { amount: creditsEarned, tasks: chunkSize });
+            } catch (error) {
+                console.error('Failed to credit user:', error);
+            }
+        }
 
         console.log(`Job ${jobId} progress: ${job.pendingResults.length}/${job.totalChunks}`);
 
@@ -96,7 +118,16 @@ io.on('connection', (socket) => {
             if (jobIndex !== -1) recentJobs[jobIndex].status = 'complete';
             emitDashboardUpdate();
 
-            job.res.json({ jobId, result: finalResult });
+            // Send result back to developer
+            if (job.res) {
+                job.res.json({ jobId, result: finalResult });
+            }
+            
+            // Notify developer about job completion
+            if (job.developerEmail) {
+                io.emit('job-complete', { jobId, result: finalResult, developerEmail: job.developerEmail });
+            }
+            
             delete jobs[jobId];
         }
     });
@@ -332,7 +363,40 @@ app.post('/api/auth/select-role', requireAuth, async (req, res) => {
 
 app.get('/api/contributor/stats', requireAuth, requireRole('contributor'), async (req, res) => {
     const stats = await auth.getUserStats(req.user.email);
+    stats.activeWorkers = workers.length;
     res.json(stats);
+});
+
+// Start/stop worker endpoints for contributors
+app.post('/api/contributor/start-worker', requireAuth, requireRole('contributor'), async (req, res) => {
+    const { workerType } = req.body; // 'browser', 'cpu', or 'gpu'
+    
+    if (!['browser', 'cpu', 'gpu'].includes(workerType)) {
+        return res.status(400).json({ error: 'Invalid worker type' });
+    }
+    
+    // For now, return instructions on how to start the worker
+    // In the future, this could spawn actual worker processes
+    const instructions = {
+        browser: 'Browser worker will run in your browser tab',
+        cpu: 'Run: npx nebula-worker start --master http://localhost:3000',
+        gpu: 'Run: npx nebula-worker start --gpu --master http://localhost:3000'
+    };
+    
+    res.json({ 
+        message: 'Worker start initiated',
+        instructions: instructions[workerType],
+        workerType
+    });
+});
+
+app.post('/api/contributor/stop-worker', requireAuth, requireRole('contributor'), async (req, res) => {
+    const { workerType } = req.body;
+    
+    res.json({ 
+        message: 'Worker stopped',
+        workerType
+    });
 });
 
 // ─── Developer Routes ───────────────────────────────────────────
@@ -341,6 +405,15 @@ app.get('/api/developer/stats', requireAuth, requireRole('developer'), async (re
     const stats = await auth.getUserStats(req.user.email);
     stats.activeWorkers = workers.length;
     res.json(stats);
+});
+
+app.get('/api/developer/jobs', requireAuth, requireRole('developer'), async (req, res) => {
+    // Return recent jobs for this developer
+    // For now, return all recent jobs (in production, filter by user)
+    res.json({ 
+        jobs: recentJobs.slice(-10).reverse(),
+        activeJobs: Object.keys(jobs).length
+    });
 });
 
 app.post('/api/developer/submit-job', requireAuth, requireRole('developer'), async (req, res) => {
@@ -381,7 +454,8 @@ app.post('/api/developer/submit-job', requireAuth, requireRole('developer'), asy
         totalChunks: 0,
         pendingResults: [],
         workerChunkMap: {},
-        res
+        res,
+        developerEmail: req.user.email // Track who submitted the job
     };
 
     const chunks = splitIntoChunks(tasks, workers.length);
@@ -389,7 +463,7 @@ app.post('/api/developer/submit-job', requireAuth, requireRole('developer'), asy
 
     console.log(`[Developer Job] ${req.user.email} - Job ${jobId} - ${chunks.length} chunks - ${totalCost} credits`);
 
-    recentJobs.push({ id: jobId, chunks: chunks.length, status: 'running' });
+    recentJobs.push({ id: jobId, chunks: chunks.length, status: 'running', developerEmail: req.user.email });
     emitDashboardUpdate();
 
     chunks.forEach((chunk, index) => {
@@ -412,6 +486,11 @@ app.get('/api/superuser/stats', requireAuth, requireRole('superuser'), async (re
     stats.activeWorkers = workers.length;
     stats.totalJobs = jobsCompleted;
     res.json(stats);
+});
+
+// Catch-all route to serve React app
+app.get('*', (req, res) => {
+    res.sendFile(path.join(frontendBuild, 'index.html'));
 });
 
 server.listen(3000, () => {

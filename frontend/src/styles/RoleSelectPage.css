@@ -1,0 +1,172 @@
+.role-select-page {
+  min-height: 100vh;
+  padding: 40px 20px;
+}
+
+.role-select-page .container {
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.role-select-page .header {
+  text-align: center;
+  margin-bottom: 60px;
+}
+
+.role-select-page .logo {
+  font-family: var(--mono);
+  font-size: 1.5rem;
+  color: var(--purple);
+  margin-bottom: 16px;
+  letter-spacing: 2px;
+}
+
+.role-select-page h1 {
+  font-size: 2.5rem;
+  font-weight: 600;
+  margin-bottom: 12px;
+  letter-spacing: -1px;
+}
+
+.role-select-page .subtitle {
+  color: var(--text-dim);
+  font-size: 1.1rem;
+}
+
+.role-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-bottom: 40px;
+}
+
+.role-card {
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: 16px;
+  padding: 40px;
+  cursor: pointer;
+  transition: all 0.3s;
+  position: relative;
+  overflow: hidden;
+}
+
+.role-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--purple);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.role-card.developer::before {
+  background: var(--green);
+}
+
+.role-card:hover {
+  border-color: var(--purple);
+  transform: translateY(-4px);
+}
+
+.role-card.developer:hover {
+  border-color: var(--green);
+}
+
+.role-card:hover::before {
+  opacity: 1;
+}
+
+.role-badge {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--purple);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 16px;
+}
+
+.role-card.developer .role-badge {
+  color: var(--green);
+}
+
+.role-title {
+  font-size: 1.8rem;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.role-desc {
+  color: var(--text-dim);
+  line-height: 1.8;
+  margin-bottom: 24px;
+}
+
+.role-features {
+  list-style: none;
+  margin-bottom: 24px;
+}
+
+.role-features li {
+  padding: 8px 0;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+}
+
+.role-features li::before {
+  content: '→';
+  color: var(--purple);
+  margin-right: 12px;
+  font-weight: bold;
+}
+
+.role-card.developer .role-features li::before {
+  color: var(--green);
+}
+
+.btn-select {
+  width: 100%;
+  padding: 14px;
+  background: var(--purple);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: box-shadow 0.2s;
+}
+
+.role-card.developer .btn-select {
+  background: var(--green);
+  color: var(--bg);
+}
+
+.btn-select:hover {
+  box-shadow: 0 0 24px var(--purple-glow);
+}
+
+.logout-link {
+  text-align: center;
+  margin-top: 32px;
+}
+
+.logout-link a {
+  color: var(--text-dim);
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+
+.logout-link a:hover {
+  color: var(--purple);
+}
+
+@media(max-width: 768px) {
+  .role-grid {
+    grid-template-columns: 1fr;
+  }
+}

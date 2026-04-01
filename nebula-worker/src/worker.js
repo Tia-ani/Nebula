@@ -73,9 +73,16 @@ async function processTask(task, model) {
     }
 }
 
-async function startWorker(masterUrl, preferredModel) {
+async function startWorker(masterUrl, preferredModel, userEmail) {
     console.log('\n⚡ Nebula Worker\n');
     console.log(`Connecting to master: ${masterUrl}`);
+    
+    if (userEmail) {
+        console.log(`Account: ${userEmail}`);
+    } else {
+        console.log('⚠️  No email provided - credits will not be tracked');
+        console.log('   Use: npx nebula-worker start --email your@email.com\n');
+    }
 
     // Check Ollama first
     const model = await detectModel(preferredModel);
@@ -86,7 +93,10 @@ async function startWorker(masterUrl, preferredModel) {
     let chunksProcessed = 0;
 
     const socket = io(masterUrl, {
-        query: { type: 'worker' },
+        query: { 
+            type: 'worker',
+            userEmail: userEmail || ''
+        },
         reconnection: true,
         reconnectionDelay: 2000,
     });
@@ -99,6 +109,10 @@ async function startWorker(masterUrl, preferredModel) {
     socket.on('session-key', (keyHex) => {
         sessionKey = Buffer.from(keyHex, 'hex');
         console.log('Session key received ✓');
+    });
+
+    socket.on('credits-earned', (data) => {
+        console.log(`\n💰 Earned ${data.amount} credits for ${data.tasks} tasks!`);
     });
 
     socket.on('task-chunk', async (data) => {

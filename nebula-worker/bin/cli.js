@@ -13,8 +13,9 @@ program
     .description('Start contributing compute to the Nebula network')
     .option('--master <url>', 'Master node URL', 'http://localhost:3000')
     .option('--model <name>', 'Ollama model to use (auto-detected if not specified)')
+    .option('--email <email>', 'Your Nebula account email (to track credits)')
     .action((options) => {
-        startWorker(options.master, options.model);
+        startWorker(options.master, options.model, options.email);
     });
 
 program.parse();

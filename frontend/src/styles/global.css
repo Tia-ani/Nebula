@@ -1,0 +1,40 @@
+:root {
+    --bg:          #06060f;
+    --surface:     #0c0c18;
+    --surface2:    #111120;
+    --border:      #1a1a2e;
+    --purple:      #6d5aff;
+    --purple-dim:  rgba(109,90,255,0.12);
+    --purple-glow: rgba(109,90,255,0.3);
+    --purple-mid:  rgba(109,90,255,0.06);
+    --green:       #00e5a0;
+    --green-dim:   rgba(0,229,160,0.08);
+    --yellow:      #ffd166;
+    --red:         #ff6b6b;
+    --blue:        #60a5fa;
+    --text:        #e8e8f4;
+    --text-dim:    #6a6a88;
+    --text-faint:  #181828;
+    --mono:        'DM Mono', monospace;
+}
+
+* { 
+    margin:0; 
+    padding:0; 
+    box-sizing:border-box; 
+}
+
+html { 
+    scroll-behavior:smooth; 
+}
+
+body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    overflow-x: hidden;
+}
+
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&family=DM+Mono:wght@400;500&display=swap');

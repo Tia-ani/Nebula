@@ -5,10 +5,9 @@ const MONGODB_URI = 'mongodb+srv://anishka_nebula:tiya%401932@nebula.juoe7mu.mon
 
 async function connectDB() {
     try {
-        // Try connecting with additional options
+        // Connect with the working configuration
         await mongoose.connect(MONGODB_URI, {
-            serverSelectionTimeoutMS: 5000,
-            socketTimeoutMS: 45000,
+            serverSelectionTimeoutMS: 10000,
         });
         console.log('✓ Connected to MongoDB');
         

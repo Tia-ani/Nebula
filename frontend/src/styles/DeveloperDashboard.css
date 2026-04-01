@@ -1,0 +1,200 @@
+.developer-dashboard {
+  padding: 20px;
+}
+
+.stat-icon {
+  width: 48px;
+  height: 48px;
+  margin-bottom: 12px;
+  padding: 12px;
+  background: rgba(109,90,255,0.1);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stat-icon svg {
+  width: 24px;
+  height: 24px;
+  stroke: var(--purple);
+}
+
+.stat-card:nth-child(2) .stat-icon {
+  background: rgba(0,229,160,0.1);
+}
+
+.stat-card:nth-child(2) .stat-icon svg {
+  stroke: var(--green);
+}
+
+.stat-card:nth-child(3) .stat-icon {
+  background: rgba(255,215,102,0.1);
+}
+
+.stat-card:nth-child(3) .stat-icon svg {
+  stroke: var(--yellow);
+}
+
+.stat-card:nth-child(4) .stat-icon {
+  background: rgba(106,106,136,0.1);
+}
+
+.stat-card:nth-child(4) .stat-icon svg {
+  stroke: var(--text-dim);
+}
+
+.developer-dashboard .stats-grid {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 32px;
+  margin-bottom: 24px;
+}
+
+.section-title {
+  font-size: 1.5rem;
+  margin-bottom: 20px;
+  font-weight: 600;
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  font-size: 0.9rem;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.form-group textarea {
+  width: 100%;
+  min-height: 120px;
+  padding: 14px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 0.9rem;
+  resize: vertical;
+}
+
+.form-group textarea:focus {
+  outline: none;
+  border-color: var(--purple);
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.form-group select,
+.form-group input {
+  width: 100%;
+  padding: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.95rem;
+}
+
+.form-group select:focus,
+.form-group input:focus {
+  outline: none;
+  border-color: var(--purple);
+}
+
+.cost-estimate {
+  background: rgba(109,90,255,0.1);
+  border: 1px solid var(--purple);
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: 20px;
+}
+
+.cost-estimate h4 {
+  color: var(--purple);
+  margin-bottom: 12px;
+}
+
+.cost-line {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+}
+
+.cost-line.total {
+  border-top: 1px solid var(--border);
+  margin-top: 8px;
+  padding-top: 12px;
+  font-weight: 600;
+  color: var(--text);
+  font-size: 1.1rem;
+}
+
+.job-list {
+  margin-top: 24px;
+}
+
+.job-item {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.job-info {
+  flex: 1;
+}
+
+.job-id {
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+
+.job-status {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.job-status.running {
+  background: rgba(255,215,102,0.2);
+  color: var(--yellow);
+}
+
+.job-status.completed {
+  background: rgba(0,229,160,0.2);
+  color: var(--green);
+}
+
+@media(max-width: 900px) {
+  .developer-dashboard .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+}

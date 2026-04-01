@@ -1,0 +1,253 @@
+import React, { useEffect, useState } from 'react';
+import io, { Socket } from 'socket.io-client';
+
+interface BrowserWorkerProps {
+  onStop: () => void;
+}
+
+const BrowserWorker: React.FC<BrowserWorkerProps> = ({ onStop }) => {
+  const [socket, setSocket] = useState<Socket | null>(null);
+  const [status, setStatus] = useState<'connecting' | 'connected' | 'working' | 'disconnected'>('connecting');
+  const [tasksDone, setTasksDone] = useState(0);
+  const [chunksDone, setChunksDone] = useState(0);
+  const [logs, setLogs] = useState<Array<{ message: string; type: string }>>([]);
+  const [creditsEarned, setCreditsEarned] = useState(0);
+  const [showCreditsNotification, setShowCreditsNotification] = useState(false);
+
+  useEffect(() => {
+    // Get user email from localStorage
+    const user = JSON.parse(localStorage.getItem('nebula-user') || '{}');
+    const userEmail = user.email || '';
+
+    const newSocket = io('http://localhost:3000', { 
+      query: { 
+        type: 'browser-worker',
+        userEmail: userEmail
+      } 
+    });
+    setSocket(newSocket);
+
+    const addLog = (message: string, type: string = '') => {
+      setLogs(prev => [...prev, { message, type }].slice(-20)); // Keep last 20 logs
+    };
+
+    newSocket.on('connect', () => {
+      setStatus('connected');
+      addLog('Connected to Nebula network', 'info');
+    });
+
+    newSocket.on('task-chunk', async (data: any) => {
+      setStatus('working');
+
+      const { jobId, chunk } = JSON.parse(data.chunk.replace('PLAIN:', ''));
+      addLog(`Received chunk of ${chunk.length} tasks`, 'info');
+
+      const results = chunk.map((task: string) => processTask(task));
+
+      setChunksDone(prev => prev + 1);
+      setTasksDone(prev => prev + chunk.length);
+
+      newSocket.emit('chunk-result', 'PLAIN:' + JSON.stringify({ jobId, result: results }));
+
+      addLog(`Chunk complete — ${chunk.length} tasks processed`, 'success');
+      setStatus('connected');
+    });
+
+    newSocket.on('credits-earned', (data: { amount: number; tasks: number }) => {
+      addLog(`Earned ${data.amount} credits for ${data.tasks} tasks!`, 'success');
+      setCreditsEarned(prev => prev + data.amount);
+      setShowCreditsNotification(true);
+      setTimeout(() => setShowCreditsNotification(false), 3000);
+    });
+
+    newSocket.on('disconnect', () => {
+      setStatus('disconnected');
+      addLog('Disconnected from network', '');
+    });
+
+    return () => {
+      newSocket.close();
+    };
+  }, []);
+
+  const processTask = (task: string) => {
+    return {
+      input: task,
+      wordCount: task.split(' ').length,
+      charCount: task.length,
+      sentiment: quickSentiment(task),
+      processed: true,
+    };
+  };
+
+  const quickSentiment = (text: string) => {
+    const positive = ['good', 'great', 'love', 'excellent', 'amazing', 'awesome', 'fantastic', 'wonderful', 'best', 'happy'];
+    const negative = ['bad', 'terrible', 'hate', 'awful', 'worst', 'horrible', 'poor', 'disappointing', 'never', 'waste'];
+    const lower = text.toLowerCase();
+    const posCount = positive.filter(w => lower.includes(w)).length;
+    const negCount = negative.filter(w => lower.includes(w)).length;
+    if (posCount > negCount) return 'positive';
+    if (negCount > posCount) return 'negative';
+    return 'neutral';
+  };
+
+  const handleStop = () => {
+    if (socket) {
+      socket.close();
+    }
+    onStop();
+  };
+
+  const getStatusInfo = () => {
+    switch (status) {
+      case 'connecting':
+        return { dot: '', text: 'Connecting...', sub: 'Establishing connection to Nebula' };
+      case 'connected':
+        return { dot: 'connected', text: '🟢 Connected', sub: 'Ready to receive tasks' };
+      case 'working':
+        return { dot: 'working', text: '⚡ Working...', sub: 'Processing your chunk' };
+      case 'disconnected':
+        return { dot: '', text: 'Disconnected', sub: 'Lost connection to Nebula' };
+    }
+  };
+
+  const statusInfo = getStatusInfo();
+
+  return (
+    <div style={{ 
+      position: 'fixed', 
+      inset: 0, 
+      background: 'rgba(0,0,0,0.95)', 
+      zIndex: 1000,
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '20px'
+    }}>
+      {showCreditsNotification && (
+        <div style={{
+          position: 'fixed',
+          top: '20px',
+          right: '20px',
+          background: 'linear-gradient(135deg, #34d399, #10b981)',
+          color: 'white',
+          padding: '16px 24px',
+          borderRadius: '12px',
+          boxShadow: '0 8px 32px rgba(52, 211, 153, 0.4)',
+          fontSize: '1rem',
+          fontWeight: 600,
+          animation: 'slideIn 0.3s ease-out',
+          zIndex: 1001
+        }}>
+          +{creditsEarned} credits earned!
+        </div>
+      )}
+
+      <h1 style={{ fontSize: '2rem', color: '#a78bfa', marginBottom: '8px' }}>⚡ Nebula Worker</h1>
+      <p style={{ color: '#666', marginBottom: '40px', fontSize: '0.9rem' }}>Contributing compute to the network</p>
+
+      <div style={{
+        background: '#111',
+        border: '1px solid #222',
+        borderRadius: '12px',
+        padding: '40px',
+        textAlign: 'center',
+        width: '100%',
+        maxWidth: '400px',
+        marginBottom: '20px'
+      }}>
+        <div style={{
+          width: '16px',
+          height: '16px',
+          borderRadius: '50%',
+          background: statusInfo.dot === 'connected' ? '#34d399' : statusInfo.dot === 'working' ? '#fbbf24' : '#666',
+          margin: '0 auto 16px',
+          animation: statusInfo.dot ? 'pulse 1.5s infinite' : 'none'
+        }}></div>
+        <div style={{ fontSize: '1.2rem', marginBottom: '8px' }}>{statusInfo.text}</div>
+        <div style={{ fontSize: '0.8rem', color: '#666' }}>{statusInfo.sub}</div>
+      </div>
+
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: '1fr 1fr 1fr',
+        gap: '12px',
+        width: '100%',
+        maxWidth: '600px'
+      }}>
+        <div style={{
+          background: '#111',
+          border: '1px solid #222',
+          borderRadius: '8px',
+          padding: '16px',
+          textAlign: 'center'
+        }}>
+          <div style={{ fontSize: '1.8rem', color: '#a78bfa', fontWeight: 'bold' }}>{tasksDone}</div>
+          <div style={{ fontSize: '0.75rem', color: '#666', textTransform: 'uppercase', letterSpacing: '1px', marginTop: '4px' }}>Tasks Done</div>
+        </div>
+        <div style={{
+          background: '#111',
+          border: '1px solid #222',
+          borderRadius: '8px',
+          padding: '16px',
+          textAlign: 'center'
+        }}>
+          <div style={{ fontSize: '1.8rem', color: '#a78bfa', fontWeight: 'bold' }}>{chunksDone}</div>
+          <div style={{ fontSize: '0.75rem', color: '#666', textTransform: 'uppercase', letterSpacing: '1px', marginTop: '4px' }}>Chunks Done</div>
+        </div>
+        <div style={{
+          background: '#111',
+          border: '1px solid #34d399',
+          borderRadius: '8px',
+          padding: '16px',
+          textAlign: 'center'
+        }}>
+          <div style={{ fontSize: '1.8rem', color: '#34d399', fontWeight: 'bold' }}>{creditsEarned}</div>
+          <div style={{ fontSize: '0.75rem', color: '#666', textTransform: 'uppercase', letterSpacing: '1px', marginTop: '4px' }}>Credits Earned</div>
+        </div>
+      </div>
+
+      <div style={{
+        width: '100%',
+        maxWidth: '600px',
+        marginTop: '20px',
+        background: '#111',
+        border: '1px solid #222',
+        borderRadius: '8px',
+        padding: '16px',
+        maxHeight: '200px',
+        overflowY: 'auto'
+      }}>
+        {logs.map((log, i) => (
+          <div key={i} style={{
+            fontSize: '0.75rem',
+            color: log.type === 'success' ? '#34d399' : log.type === 'info' ? '#60a5fa' : '#666',
+            marginBottom: '4px'
+          }}>
+            &gt; {log.message}
+          </div>
+        ))}
+      </div>
+
+      <button
+        onClick={handleStop}
+        style={{
+          marginTop: '20px',
+          padding: '12px 32px',
+          background: '#ef4444',
+          color: 'white',
+          border: 'none',
+          borderRadius: '8px',
+          cursor: 'pointer',
+          fontSize: '0.95rem',
+          fontWeight: 500
+        }}
+      >
+        Stop Worker
+      </button>
+    </div>
+  );
+};
+
+export default BrowserWorker;
