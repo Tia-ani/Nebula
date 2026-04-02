@@ -41,14 +41,9 @@ async function signup(name, email, password) {
             return user;
         });
 
-        // Generate token with timestamp to make it unique
+        // Generate token
         const token = jwt.sign(
-            { 
-                userId: result.id, 
-                email: result.email, 
-                role: result.role,
-                timestamp: Date.now() // Add timestamp for uniqueness
-            },
+            { userId: result.id, email: result.email, role: result.role },
             JWT_SECRET,
             { expiresIn: JWT_EXPIRES_IN }
         );
@@ -100,14 +95,9 @@ async function login(email, password) {
             return { error: 'Invalid email or password' };
         }
 
-        // Generate token with timestamp to make it unique
+        // Generate token
         const token = jwt.sign(
-            { 
-                userId: user.id, 
-                email: user.email, 
-                role: user.role,
-                timestamp: Date.now() // Add timestamp for uniqueness
-            },
+            { userId: user.id, email: user.email, role: user.role },
             JWT_SECRET,
             { expiresIn: JWT_EXPIRES_IN }
         );

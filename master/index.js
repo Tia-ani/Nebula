@@ -5,7 +5,7 @@ const { splitIntoChunks, assembleResults, encrypt, decrypt } = require('./chunk'
 const { v4: uuidv4 } = require('uuid');
 const crypto = require('crypto');
 const auth = require('./auth');
-const connectDB = require('./db');
+const { initialize: initializeDB } = require('./database');
 const path = require('path');
 const cors = require('cors');
 
@@ -18,14 +18,17 @@ app.use((req, res, next) => {
     next();
 });
 
-// Connect to MongoDB
-connectDB();
+// Initialize PostgreSQL database
+initializeDB().catch(err => {
+    console.error('Failed to initialize database:', err);
+    // Continue anyway - database might already be initialized
+});
 
 // Serve React build in production
 const frontendBuild = path.join(__dirname, '../frontend/build');
 app.use(express.static(frontendBuild));
 
-// API routes (defined before catch-all)
+// API routes (defined BEFORE catch-all)
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
@@ -363,17 +366,47 @@ app.post('/api/auth/select-role', requireAuth, async (req, res) => {
 
 app.get('/api/contributor/check-ollama', async (req, res) => {
     try {
-        const response = await fetch('http://localhost:11434/api/tags');
-        if (response.ok) {
-            const data = await response.json();
-            res.json({ 
-                installed: true, 
-                running: true,
-                models: data.models || []
-            });
-        } else {
+        const http = require('http');
+        
+        const options = {
+            hostname: 'localhost',
+            port: 11434,
+            path: '/api/tags',
+            method: 'GET',
+            timeout: 2000
+        };
+
+        const request = http.request(options, (response) => {
+            if (response.statusCode === 200) {
+                let data = '';
+                response.on('data', (chunk) => { data += chunk; });
+                response.on('end', () => {
+                    try {
+                        const parsed = JSON.parse(data);
+                        res.json({ 
+                            installed: true, 
+                            running: true,
+                            models: parsed.models || []
+                        });
+                    } catch (e) {
+                        res.json({ installed: false, running: false });
+                    }
+                });
+            } else {
+                res.json({ installed: false, running: false });
+            }
+        });
+
+        request.on('error', () => {
             res.json({ installed: false, running: false });
-        }
+        });
+
+        request.on('timeout', () => {
+            request.destroy();
+            res.json({ installed: false, running: false });
+        });
+
+        request.end();
     } catch (error) {
         res.json({ installed: false, running: false });
     }
@@ -460,11 +493,16 @@ app.post('/api/developer/submit-job', requireAuth, requireRole('developer'), asy
         });
     }
     
-    // Deduct credits
-    await auth.updateUserCredits(req.user.email, totalCost, 'subtract');
-    user.creditsSpent = (user.creditsSpent || 0) + totalCost;
-    user.jobsSubmitted = (user.jobsSubmitted || 0) + 1;
-    await user.save();
+    // Deduct credits and increment job count (atomic operation)
+    try {
+        await auth.updateUserCredits(req.user.email, totalCost, 'subtract');
+        await auth.incrementJobCount(req.user.email);
+    } catch (error) {
+        return res.status(400).json({ 
+            error: 'Failed to process payment',
+            message: error.message
+        });
+    }
     
     // Submit job (reuse existing job submission logic)
     const jobId = uuidv4();
@@ -506,7 +544,7 @@ app.get('/api/superuser/stats', requireAuth, requireRole('superuser'), async (re
     res.json(stats);
 });
 
-// Catch-all route to serve React app
+// Catch-all route to serve React app (frontendBuild already declared at top)
 app.get('*', (req, res) => {
     res.sendFile(path.join(frontendBuild, 'index.html'));
 });
