@@ -1,7 +1,8 @@
 const mongoose = require('mongoose');
+require('dotenv').config();
 
-// MongoDB connection string - password contains @ which needs to be URL encoded as %40
-const MONGODB_URI = 'mongodb+srv://anishka_nebula:tiya%401932@nebula.juoe7mu.mongodb.net/nebula?retryWrites=true&w=majority&appName=Nebula';
+// MongoDB connection string from environment variable
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/nebula';
 
 async function connectDB() {
     try {
