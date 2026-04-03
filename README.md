@@ -277,7 +277,7 @@ The application is live at: **https://nebula-mk65.onrender.com**
 
 ## Built by
 
-**Anish Khurana** — building in public, day by day.
+**Anishka Khurana** — building in public, day by day.
 
 Follow the journey on X: [@KhuranaAni62798](https://twitter.com/KhuranaAni62798)
 
