@@ -139,7 +139,11 @@ io.on('connection', (socket) => {
         const disconnectedWorker = workers.find(w => w.id === socket.id);
         workers = workers.filter(w => w.id !== socket.id);
         emitDashboardUpdate();
-        console.log(`Worker disconnected: ${socket.id}`);
+        
+        // Only log if worker had an email (real user, not just connection test)
+        if (disconnectedWorker && disconnectedWorker.userEmail) {
+            console.log(`Worker disconnected: ${disconnectedWorker.userEmail} (${disconnectedWorker.type})`);
+        }
 
         if (!disconnectedWorker) return;
 
