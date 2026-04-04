@@ -6,6 +6,8 @@ const { v4: uuidv4 } = require('uuid');
 const crypto = require('crypto');
 const auth = require('./auth');
 const { initialize: initializeDB } = require('./database');
+const { redis } = require('./redis');
+const { workerRegistry, chunkTracker, jobManager, submitJob } = require('./queue');
 const path = require('path');
 const cors = require('cors');
 
@@ -62,10 +64,32 @@ io.on('connection', (socket) => {
         console.log(`${type} connected: ${socket.id}${userEmail ? ` (${userEmail})` : ''}`);
 
         const sessionKey = crypto.randomBytes(32);
+        
+        // Register worker in Redis
+        workerRegistry.registerWorker(socket.id, {
+            type,
+            sessionKey: sessionKey.toString('hex'),
+            userEmail,
+            socketId: socket.id
+        });
+
+        // Legacy in-memory tracking (for backward compatibility)
         workers.push({ id: socket.id, type, sessionKey, userEmail });
 
         // Send session key to worker immediately on connect
         socket.emit('session-key', sessionKey.toString('hex'));
+
+        // Start heartbeat monitoring
+        const heartbeatInterval = setInterval(async () => {
+            const success = await workerRegistry.heartbeat(socket.id);
+            if (!success) {
+                clearInterval(heartbeatInterval);
+            }
+        }, 10000); // Every 10 seconds
+
+        socket.on('disconnect', () => {
+            clearInterval(heartbeatInterval);
+        });
 
         emitDashboardUpdate();
     }
@@ -92,6 +116,9 @@ io.on('connection', (socket) => {
         job.pendingResults.push(result);
         const chunkSize = job.workerChunkMap[socket.id]?.length || 0;
         delete job.workerChunkMap[socket.id];
+
+        // Update Redis job state
+        await jobManager.addResult(jobId, result);
 
         // Credit the contributor for completing this chunk
         if (worker.userEmail && chunkSize > 0) {
@@ -135,15 +162,24 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('disconnect', () => {
+    socket.on('disconnect', async () => {
         const disconnectedWorker = workers.find(w => w.id === socket.id);
         workers = workers.filter(w => w.id !== socket.id);
-        emitDashboardUpdate();
         
-        // Only log if worker had an email (real user, not just connection test)
-        if (disconnectedWorker && disconnectedWorker.userEmail) {
-            console.log(`Worker disconnected: ${disconnectedWorker.userEmail} (${disconnectedWorker.type})`);
+        // Remove from Redis and reassign chunks
+        if (disconnectedWorker) {
+            const reassignedCount = await chunkTracker.reassignWorkerChunks(socket.id);
+            await workerRegistry.removeWorker(socket.id);
+            
+            if (disconnectedWorker.userEmail) {
+                console.log(`Worker disconnected: ${disconnectedWorker.userEmail} (${disconnectedWorker.type})`);
+                if (reassignedCount > 0) {
+                    console.log(`Reassigned ${reassignedCount} chunks from ${disconnectedWorker.userEmail}`);
+                }
+            }
         }
+        
+        emitDashboardUpdate();
 
         if (!disconnectedWorker) return;
 
