@@ -1,6 +1,7 @@
 const { Queue, Worker, QueueEvents } = require('bullmq');
 const { redis } = require('./redis');
 const { splitIntoChunks, assembleResults } = require('./chunk');
+const { injectCanaries, validateCanary, evaluateWorker } = require('./canary');
 const auth = require('./auth');
 
 // BullMQ connection config
@@ -29,6 +30,7 @@ class JobManager {
             totalChunks: 0,
             completedChunks: 0,
             results: [],
+            canaryMap: {}, // Track canary positions
             status: 'pending',
             createdAt: Date.now()
         };

@@ -8,6 +8,8 @@ const auth = require('./auth');
 const { initialize: initializeDB } = require('./database');
 const { redis } = require('./redis');
 const { workerRegistry, chunkTracker, jobManager, submitJob } = require('./queue');
+const { injectCanaries, validateCanary } = require('./canary');
+const canaryTracker = require('./canary-tracker');
 const path = require('path');
 const cors = require('cors');
 
@@ -115,10 +117,37 @@ io.on('connection', (socket) => {
 
         job.pendingResults.push(result);
         const chunkSize = job.workerChunkMap[socket.id]?.length || 0;
+        const chunk = job.workerChunkMap[socket.id] || [];
         delete job.workerChunkMap[socket.id];
 
         // Update Redis job state
         await jobManager.addResult(jobId, result);
+
+        // Validate canaries in this chunk
+        let canaryResults = [];
+        if (job.canaryMap && Object.keys(job.canaryMap).length > 0) {
+            // Check each result against canary map
+            result.forEach((taskResult, index) => {
+                const globalIndex = job.pendingResults.length * chunkSize + index; // Approximate position
+                const canary = job.canaryMap[globalIndex];
+                
+                if (canary) {
+                    const passed = validateCanary(taskResult, canary.expected);
+                    canaryResults.push({ passed, canary });
+                    
+                    // Record canary result in database
+                    canaryTracker.recordCanaryResult(
+                        socket.id,
+                        worker.userEmail,
+                        canary.canaryId || `canary-${globalIndex}`,
+                        canary.expected,
+                        taskResult,
+                        jobId,
+                        `${jobId}-chunk-${job.pendingResults.length}`
+                    ).catch(err => console.error('Failed to record canary:', err));
+                }
+            });
+        }
 
         // Credit the contributor for completing this chunk
         if (worker.userEmail && chunkSize > 0) {
@@ -127,7 +156,7 @@ io.on('connection', (socket) => {
             
             try {
                 await auth.updateUserCredits(worker.userEmail, creditsEarned, 'add');
-                console.log(`Credited ${creditsEarned} credits to ${worker.userEmail} for ${chunkSize} tasks`);
+                console.log(`Credited ${creditsEarned} credits to ${worker.userEmail} for ${chunkSize} tasks${canaryResults.length > 0 ? ` (${canaryResults.filter(r => r.passed).length}/${canaryResults.length} canaries passed)` : ''}`);
                 
                 // Notify the worker about credits earned
                 socket.emit('credits-earned', { amount: creditsEarned, tasks: chunkSize });
@@ -544,20 +573,24 @@ app.post('/api/developer/submit-job', requireAuth, requireRole('developer'), asy
         });
     }
     
+    // Inject canaries into tasks (15% injection rate)
+    const { tasks: tasksWithCanaries, canaryMap, canaryCount } = injectCanaries(tasks, 0.15);
+    
     // Submit job (reuse existing job submission logic)
     const jobId = uuidv4();
     jobs[jobId] = {
         totalChunks: 0,
         pendingResults: [],
         workerChunkMap: {},
+        canaryMap, // Store canary positions for validation
         res,
         developerEmail: req.user.email // Track who submitted the job
     };
 
-    const chunks = splitIntoChunks(tasks, workers.length);
+    const chunks = splitIntoChunks(tasksWithCanaries, workers.length);
     jobs[jobId].totalChunks = chunks.length;
 
-    console.log(`[Developer Job] ${req.user.email} - Job ${jobId} - ${chunks.length} chunks - ${totalCost} credits`);
+    console.log(`[Developer Job] ${req.user.email} - Job ${jobId} - ${chunks.length} chunks - ${totalCost} credits - ${canaryCount} canaries injected`);
 
     recentJobs.push({ id: jobId, chunks: chunks.length, status: 'running', developerEmail: req.user.email });
     emitDashboardUpdate();
@@ -582,6 +615,15 @@ app.get('/api/superuser/stats', requireAuth, requireRole('superuser'), async (re
     stats.activeWorkers = workers.length;
     stats.totalJobs = jobsCompleted;
     res.json(stats);
+});
+
+app.get('/api/superuser/flagged-workers', requireAuth, requireRole('superuser'), async (req, res) => {
+    try {
+        const flaggedWorkers = await canaryTracker.getFlaggedWorkers();
+        res.json({ flaggedWorkers });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to get flagged workers' });
+    }
 });
 
 // Catch-all route to serve React app (frontendBuild already declared at top)
