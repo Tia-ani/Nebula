@@ -157,14 +157,33 @@ io.on('connection', (socket) => {
             const creditsPerTask = worker.type === 'browser-worker' ? 10 : worker.type === 'gpu-worker' ? 100 : 50;
             const creditsEarned = chunkSize * creditsPerTask;
             
-            try {
-                await auth.updateUserCredits(worker.userEmail, creditsEarned, 'add');
-                console.log(`Credited ${creditsEarned} credits to ${worker.userEmail} for ${chunkSize} tasks${canaryResults.length > 0 ? ` (${canaryResults.filter(r => r.passed).length}/${canaryResults.length} canaries passed)` : ''}`);
+            // Check worker reputation before paying (use email, not socket.id)
+            const workerPerf = await canaryTracker.getWorkerPerformanceByEmail(worker.userEmail);
+            const shouldPay = workerPerf.totalCanaries < 5 || workerPerf.passRate >= 85.0;
+            
+            if (shouldPay) {
+                try {
+                    await auth.updateUserCredits(worker.userEmail, creditsEarned, 'add');
+                    console.log(`✓ Credited ${creditsEarned} credits to ${worker.userEmail} for ${chunkSize} tasks${canaryResults.length > 0 ? ` (${canaryResults.filter(r => r.passed).length}/${canaryResults.length} canaries passed)` : ''}`);
+                    
+                    // Notify the worker about credits earned
+                    socket.emit('credits-earned', { amount: creditsEarned, tasks: chunkSize });
+                } catch (error) {
+                    console.error('Failed to credit user:', error);
+                }
+            } else {
+                // Worker is flagged - no payment
+                console.log(`✗ PAYMENT BLOCKED for ${worker.userEmail}: Pass rate ${workerPerf.passRate.toFixed(1)}% < 85% (${workerPerf.passed}/${workerPerf.totalCanaries} canaries)`);
                 
-                // Notify the worker about credits earned
-                socket.emit('credits-earned', { amount: creditsEarned, tasks: chunkSize });
-            } catch (error) {
-                console.error('Failed to credit user:', error);
+                // Notify worker they're flagged
+                socket.emit('worker-flagged', {
+                    reason: 'low_canary_pass_rate',
+                    passRate: workerPerf.passRate,
+                    threshold: 85.0,
+                    canariesPassed: workerPerf.passed,
+                    canariesTotal: workerPerf.totalCanaries,
+                    message: 'Your work quality is below threshold. Payment blocked.'
+                });
             }
         }
 

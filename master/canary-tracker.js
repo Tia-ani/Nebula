@@ -85,6 +85,32 @@ class CanaryTracker {
         }
     }
     
+    // Get worker canary performance by email (across all socket connections)
+    async getWorkerPerformanceByEmail(userEmail) {
+        try {
+            const result = await pool.query(`
+                SELECT 
+                    COUNT(*) as total_canaries,
+                    SUM(CASE WHEN passed THEN 1 ELSE 0 END) as passed,
+                    SUM(CASE WHEN NOT passed THEN 1 ELSE 0 END) as failed,
+                    AVG(CASE WHEN passed THEN 1.0 ELSE 0.0 END) * 100 as pass_rate
+                FROM canary_tracking
+                WHERE user_email = $1
+            `, [userEmail]);
+            
+            const row = result.rows[0];
+            return {
+                totalCanaries: parseInt(row.total_canaries) || 0,
+                passed: parseInt(row.passed) || 0,
+                failed: parseInt(row.failed) || 0,
+                passRate: parseFloat(row.pass_rate) || 100.0
+            };
+        } catch (error) {
+            console.error('Error getting worker performance by email:', error);
+            return { totalCanaries: 0, passed: 0, failed: 0, passRate: 100.0 };
+        }
+    }
+    
     // Get worker canary performance
     async getWorkerPerformance(workerId) {
         try {

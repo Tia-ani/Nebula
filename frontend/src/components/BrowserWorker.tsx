@@ -13,6 +13,8 @@ const BrowserWorker: React.FC<BrowserWorkerProps> = ({ onStop }) => {
   const [logs, setLogs] = useState<Array<{ message: string; type: string }>>([]);
   const [creditsEarned, setCreditsEarned] = useState(0);
   const [showCreditsNotification, setShowCreditsNotification] = useState(false);
+  const [isFlagged, setIsFlagged] = useState(false);
+  const [flaggedReason, setFlaggedReason] = useState<any>(null);
 
   useEffect(() => {
     // Get user email from localStorage
@@ -58,6 +60,14 @@ const BrowserWorker: React.FC<BrowserWorkerProps> = ({ onStop }) => {
       setCreditsEarned(prev => prev + data.amount);
       setShowCreditsNotification(true);
       setTimeout(() => setShowCreditsNotification(false), 3000);
+    });
+
+    newSocket.on('worker-flagged', (data: any) => {
+      setIsFlagged(true);
+      setFlaggedReason(data);
+      addLog(`WARNING: ${data.message}`, 'error');
+      addLog(`Pass rate: ${data.passRate.toFixed(1)}% (threshold: ${data.threshold}%)`, 'error');
+      setStatus('disconnected');
     });
 
     newSocket.on('disconnect', () => {
@@ -141,6 +151,34 @@ const BrowserWorker: React.FC<BrowserWorkerProps> = ({ onStop }) => {
           zIndex: 1001
         }}>
           +{creditsEarned} credits earned!
+        </div>
+      )}
+
+      {isFlagged && flaggedReason && (
+        <div style={{
+          position: 'fixed',
+          top: '20px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+          color: 'white',
+          padding: '20px 32px',
+          borderRadius: '12px',
+          boxShadow: '0 8px 32px rgba(239, 68, 68, 0.4)',
+          fontSize: '1rem',
+          fontWeight: 600,
+          zIndex: 1001,
+          textAlign: 'center',
+          maxWidth: '500px'
+        }}>
+          <div style={{ fontSize: '1.5rem', marginBottom: '8px' }}>⚠️ Worker Flagged</div>
+          <div style={{ fontSize: '0.9rem', opacity: 0.9 }}>{flaggedReason.message}</div>
+          <div style={{ fontSize: '0.85rem', marginTop: '8px', opacity: 0.8 }}>
+            Pass rate: {flaggedReason.passRate.toFixed(1)}% (need {flaggedReason.threshold}%)
+          </div>
+          <div style={{ fontSize: '0.85rem', opacity: 0.8 }}>
+            Canaries: {flaggedReason.canariesPassed}/{flaggedReason.canariesTotal} passed
+          </div>
         </div>
       )}
 
