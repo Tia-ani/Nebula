@@ -14,6 +14,19 @@ interface User {
   active: boolean;
 }
 
+interface WorkerReputation {
+  worker_id: string;
+  user_email: string;
+  worker_type: string;
+  canary_pass_rate: number;
+  reputation_score: number;
+  chunks_completed: number;
+  chunks_failed: number;
+  total_canaries: number;
+  canaries_passed: number;
+  last_active_at: string;
+}
+
 const SuperuserDashboard: React.FC = () => {
   const navigate = useNavigate();
   const [socket] = useState<Socket | null>(null);
@@ -28,6 +41,7 @@ const SuperuserDashboard: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [workers, setWorkers] = useState<string[]>([]);
   const [jobs, setJobs] = useState<any[]>([]);
+  const [workerReputation, setWorkerReputation] = useState<WorkerReputation[]>([]);
 
   useEffect(() => {
     const token = localStorage.getItem('nebula-token');
@@ -74,6 +88,10 @@ const SuperuserDashboard: React.FC = () => {
         creditsFlow: data.creditsFlow || 0,
       });
       setUsers(data.users || []);
+
+      // Load worker reputation data
+      const reputationResponse = await superuser.getWorkerReputation();
+      setWorkerReputation(reputationResponse.data.workers || []);
     } catch (error) {
       console.error('Failed to load data:', error);
     }
@@ -180,6 +198,53 @@ const SuperuserDashboard: React.FC = () => {
               )}
             </div>
           </div>
+        </div>
+
+        <div className="chart-card">
+          <div className="chart-header">
+            <h2 className="chart-title">Worker Reputation</h2>
+          </div>
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Email</th>
+                <th>Type</th>
+                <th>Pass Rate</th>
+                <th>Reputation</th>
+                <th>Canaries</th>
+                <th>Chunks</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {workerReputation.length > 0 ? (
+                workerReputation.map((w, i) => {
+                  const isFlagged = w.total_canaries >= 5 && w.canary_pass_rate < 85;
+                  return (
+                    <tr key={i} style={isFlagged ? { backgroundColor: 'rgba(255, 59, 48, 0.1)' } : {}}>
+                      <td>{w.user_email || 'Anonymous'}</td>
+                      <td><span className="badge">{w.worker_type}</span></td>
+                      <td style={{ color: isFlagged ? 'var(--red)' : 'inherit' }}>
+                        {w.canary_pass_rate?.toFixed(1) || '0.0'}%
+                      </td>
+                      <td>{w.reputation_score?.toFixed(2) || '0.00'}</td>
+                      <td>{w.canaries_passed || 0}/{w.total_canaries || 0}</td>
+                      <td>{w.chunks_completed || 0}</td>
+                      <td>
+                        <span className={`badge ${isFlagged ? 'flagged' : 'active'}`}>
+                          {isFlagged ? 'Flagged' : 'Active'}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })
+              ) : (
+                <tr>
+                  <td colSpan={7} className="empty-state">No worker data yet</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
 
         <div className="chart-card">

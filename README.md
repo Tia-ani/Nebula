@@ -165,10 +165,18 @@ Worker1  Worker2  Worker3  ...
 ## Features
 
 ### Authentication & Roles
-- User signup/login with MongoDB
+- User signup/login with PostgreSQL
 - Three roles: Contributor, Developer, Superuser
 - Role-based dashboards with different capabilities
 - Session management with JWT tokens
+
+### Quality Assurance System
+- **Canary tasks**: 105 verifiable tasks injected at 15% rate
+- **Real-time validation**: Automatic checking of worker outputs
+- **Worker reputation**: 0-100% scoring based on canary pass rate
+- **Payment blocking**: Workers with <85% pass rate get flagged and blocked
+- **Fraud detection**: Invisible canaries prevent gaming the system
+- **Reputation dashboard**: Superusers can monitor all worker quality metrics
 
 ### For Contributors
 - Three worker types: Browser (10 credits), CPU (50 credits), GPU (100 credits)
@@ -190,6 +198,8 @@ Worker1  Worker2  Worker3  ...
 ### For Superusers
 - Network-wide statistics
 - User management
+- Worker reputation dashboard with quality metrics
+- Real-time fraud detection and flagged worker tracking
 - System monitoring
 - Total credits in circulation
 
@@ -270,6 +280,11 @@ The application is live at: **https://nebula-mk65.onrender.com**
 - [x] React/TypeScript web application
 - [x] Real-time updates with Socket.io
 - [x] Job results with input/output display
+- [x] PostgreSQL with Redis for persistence and job queue
+- [x] BullMQ for reliable job management
+- [x] Canary verification system (105 tasks)
+- [x] Worker reputation tracking and payment blocking
+- [x] Fraud detection dashboard for superusers
 - [ ] Auto-install Ollama with one keypress
 - [ ] GPU worker tier
 - [ ] Pricing — 50% cheaper than AWS, always

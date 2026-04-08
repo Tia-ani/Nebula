@@ -44,6 +44,8 @@ export const developer = {
 
 export const superuser = {
   getStats: () => api.get('/api/superuser/stats'),
+  getWorkerReputation: () => api.get('/api/superuser/worker-reputation'),
+  getFlaggedWorkers: () => api.get('/api/superuser/flagged-workers'),
 };
 
 export default api;

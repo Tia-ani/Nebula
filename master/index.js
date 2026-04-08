@@ -665,6 +665,38 @@ app.get('/api/superuser/flagged-workers', requireAuth, requireRole('superuser'),
     }
 });
 
+app.get('/api/superuser/worker-reputation', requireAuth, requireRole('superuser'), async (req, res) => {
+    try {
+        const { pool } = require('./database');
+        
+        // Get all workers with their reputation data
+        const result = await pool.query(`
+            SELECT 
+                wm.worker_id,
+                wm.user_email,
+                wm.worker_type,
+                wm.canary_pass_rate,
+                wm.reputation_score,
+                wm.chunks_completed,
+                wm.chunks_failed,
+                wm.last_active_at,
+                COUNT(ct.id) as total_canaries,
+                SUM(CASE WHEN ct.passed THEN 1 ELSE 0 END) as canaries_passed
+            FROM worker_metrics wm
+            LEFT JOIN canary_tracking ct ON wm.worker_id = ct.worker_id
+            GROUP BY wm.worker_id, wm.user_email, wm.worker_type, wm.canary_pass_rate, 
+                     wm.reputation_score, wm.chunks_completed, wm.chunks_failed, wm.last_active_at
+            ORDER BY wm.last_active_at DESC
+            LIMIT 100
+        `);
+        
+        res.json({ workers: result.rows });
+    } catch (error) {
+        console.error('Failed to get worker reputation:', error);
+        res.status(500).json({ error: 'Failed to get worker reputation' });
+    }
+});
+
 // Catch-all route to serve React app (frontendBuild already declared at top)
 app.get('*', (req, res) => {
     res.sendFile(path.join(frontendBuild, 'index.html'));
