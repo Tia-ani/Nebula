@@ -118,35 +118,38 @@ io.on('connection', (socket) => {
         job.pendingResults.push(result);
         const chunkSize = job.workerChunkMap[socket.id]?.length || 0;
         const chunk = job.workerChunkMap[socket.id] || [];
+        const chunkCanaries = job.chunkCanaryMap[socket.id] || {};
         delete job.workerChunkMap[socket.id];
+        delete job.chunkCanaryMap[socket.id];
 
         // Update Redis job state
         await jobManager.addResult(jobId, result);
 
         // Validate canaries in this chunk
         let canaryResults = [];
-        if (job.canaryMap && Object.keys(job.canaryMap).length > 0) {
-            // Check each result against canary map
-            result.forEach((taskResult, index) => {
-                const globalIndex = job.pendingResults.length * chunkSize + index; // Approximate position
-                const canary = job.canaryMap[globalIndex];
+        if (Object.keys(chunkCanaries).length > 0) {
+            // Check each result against chunk canary map
+            result.forEach((taskResult, taskIndex) => {
+                const canary = chunkCanaries[taskIndex];
                 
                 if (canary) {
                     const passed = validateCanary(taskResult, canary.expected);
-                    canaryResults.push({ passed, canary });
+                    canaryResults.push({ passed, canary, taskResult });
                     
                     // Record canary result in database
                     canaryTracker.recordCanaryResult(
                         socket.id,
                         worker.userEmail,
-                        canary.canaryId || `canary-${globalIndex}`,
+                        canary.canaryId || `canary-${jobId}-${taskIndex}`,
                         canary.expected,
                         taskResult,
                         jobId,
-                        `${jobId}-chunk-${job.pendingResults.length}`
+                        `${jobId}-${socket.id}`
                     ).catch(err => console.error('Failed to record canary:', err));
                 }
             });
+            
+            console.log(`   Canary validation: ${canaryResults.filter(r => r.passed).length}/${canaryResults.length} passed`);
         }
 
         // Credit the contributor for completing this chunk
@@ -582,7 +585,8 @@ app.post('/api/developer/submit-job', requireAuth, requireRole('developer'), asy
         totalChunks: 0,
         pendingResults: [],
         workerChunkMap: {},
-        canaryMap, // Store canary positions for validation
+        chunkCanaryMap: {}, // Map chunk index to canary positions within that chunk
+        canaryMap, // Store global canary positions for reference
         res,
         developerEmail: req.user.email // Track who submitted the job
     };
@@ -595,8 +599,24 @@ app.post('/api/developer/submit-job', requireAuth, requireRole('developer'), asy
     recentJobs.push({ id: jobId, chunks: chunks.length, status: 'running', developerEmail: req.user.email });
     emitDashboardUpdate();
 
-    chunks.forEach((chunk, index) => {
-        const worker = workers[index % workers.length];
+    // Distribute chunks and track canary positions per chunk
+    let taskOffset = 0;
+    chunks.forEach((chunk, chunkIndex) => {
+        const worker = workers[chunkIndex % workers.length];
+        
+        // Find which tasks in this chunk are canaries
+        const chunkCanaries = {};
+        chunk.forEach((task, taskIndex) => {
+            const globalIndex = taskOffset + taskIndex;
+            if (canaryMap[globalIndex]) {
+                chunkCanaries[taskIndex] = canaryMap[globalIndex];
+            }
+        });
+        
+        // Store canary info for this chunk
+        jobs[jobId].chunkCanaryMap[worker.id] = chunkCanaries;
+        taskOffset += chunk.length;
+        
         let payload;
         if (worker.type === 'browser-worker') {
             payload = 'PLAIN:' + JSON.stringify({ jobId, chunk });

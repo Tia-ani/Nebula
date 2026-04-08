@@ -1,15 +1,13 @@
 // Canary Result Tracker
 // Tracks canary results per worker for reputation scoring
 
-const { getPool } = require('./database');
+const { pool } = require('./database');
 const { validateCanary, evaluateWorker } = require('./canary');
 
 class CanaryTracker {
     // Record a canary result
     async recordCanaryResult(workerId, userEmail, canaryId, expected, actual, jobId, chunkId) {
         const passed = validateCanary(actual, expected);
-        
-        const pool = getPool();
         
         try {
             // Insert into canary_tracking table
@@ -38,22 +36,24 @@ class CanaryTracker {
     
     // Update worker metrics based on canary performance
     async updateWorkerMetrics(workerId, userEmail, passed) {
-        const pool = getPool();
-        
         try {
-            // Get or create worker metrics
-            const result = await pool.query(`
-                INSERT INTO worker_metrics (
-                    worker_id,
-                    worker_type,
-                    user_email,
-                    chunks_completed,
-                    canary_pass_rate
-                ) VALUES ($1, 'browser-worker', $2, 0, 100.00)
-                ON CONFLICT (worker_id) 
-                DO UPDATE SET updated_at = NOW()
-                RETURNING *
-            `, [workerId, userEmail]);
+            // Get or create worker metrics (use worker_id as unique identifier)
+            const existing = await pool.query(`
+                SELECT * FROM worker_metrics WHERE worker_id = $1
+            `, [workerId]);
+            
+            if (existing.rows.length === 0) {
+                // Create new metrics
+                await pool.query(`
+                    INSERT INTO worker_metrics (
+                        worker_id,
+                        worker_type,
+                        user_email,
+                        chunks_completed,
+                        canary_pass_rate
+                    ) VALUES ($1, 'browser-worker', $2, 0, 100.00)
+                `, [workerId, userEmail]);
+            }
             
             // Recalculate pass rate from canary_tracking
             const stats = await pool.query(`
@@ -87,8 +87,6 @@ class CanaryTracker {
     
     // Get worker canary performance
     async getWorkerPerformance(workerId) {
-        const pool = getPool();
-        
         try {
             const result = await pool.query(`
                 SELECT 
@@ -138,8 +136,6 @@ class CanaryTracker {
     
     // Get all flagged workers
     async getFlaggedWorkers() {
-        const pool = getPool();
-        
         try {
             const result = await pool.query(`
                 SELECT 
