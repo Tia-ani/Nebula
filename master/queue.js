@@ -16,9 +16,13 @@ const jobQueue = new Queue('nebula-jobs', { connection });
 // Chunk Queue
 const chunkQueue = new Queue('nebula-chunks', { connection });
 
+// Dead Letter Queue for failed jobs
+const deadLetterQueue = new Queue('nebula-dead-letter', { connection });
+
 // Queue Events for monitoring
 const jobEvents = new QueueEvents('nebula-jobs', { connection });
 const chunkEvents = new QueueEvents('nebula-chunks', { connection });
+const dlqEvents = new QueueEvents('nebula-dead-letter', { connection });
 
 // Track job state in Redis
 class JobManager {
@@ -198,6 +202,80 @@ class ChunkTracker {
 
 const chunkTracker = new ChunkTracker();
 
+// Dead Letter Queue Manager
+class DeadLetterManager {
+    async addToDeadLetter(jobId, reason, metadata = {}) {
+        const dlqEntry = {
+            jobId,
+            reason,
+            metadata,
+            timestamp: Date.now(),
+            retriesExhausted: metadata.attempts || 0
+        };
+        
+        // Add to BullMQ dead letter queue
+        await deadLetterQueue.add('failed-job', dlqEntry, {
+            removeOnComplete: false, // Keep all DLQ entries
+            removeOnFail: false
+        });
+        
+        // Also store in Redis for quick lookup
+        await redis.lpush('dlq:jobs', JSON.stringify(dlqEntry));
+        await redis.ltrim('dlq:jobs', 0, 999); // Keep last 1000 failed jobs
+        
+        console.log(`Job ${jobId} moved to dead letter queue: ${reason}`);
+        
+        return dlqEntry;
+    }
+    
+    async getDeadLetterJobs(limit = 50) {
+        const jobs = await redis.lrange('dlq:jobs', 0, limit - 1);
+        return jobs.map(j => JSON.parse(j));
+    }
+    
+    async getDeadLetterStats() {
+        const total = await redis.llen('dlq:jobs');
+        const jobs = await this.getDeadLetterJobs(100);
+        
+        // Group by reason
+        const byReason = {};
+        jobs.forEach(job => {
+            byReason[job.reason] = (byReason[job.reason] || 0) + 1;
+        });
+        
+        return {
+            total,
+            byReason,
+            recent: jobs.slice(0, 10)
+        };
+    }
+    
+    async retryDeadLetterJob(jobId) {
+        // Find the job in DLQ
+        const jobs = await this.getDeadLetterJobs(1000);
+        const job = jobs.find(j => j.jobId === jobId);
+        
+        if (!job) {
+            throw new Error(`Job ${jobId} not found in dead letter queue`);
+        }
+        
+        // Resubmit the job
+        const jobData = await jobManager.getJob(jobId);
+        if (!jobData) {
+            throw new Error(`Job data for ${jobId} not found`);
+        }
+        
+        // Create new job with same tasks
+        const newJobId = await submitJob(jobData.tasks, jobData.developerEmail);
+        
+        console.log(`Retrying DLQ job ${jobId} as new job ${newJobId}`);
+        
+        return newJobId;
+    }
+}
+
+const deadLetterManager = new DeadLetterManager();
+
 // Submit a job to the queue
 async function submitJob(tasks, developerEmail = null) {
     const jobId = require('uuid').v4();
@@ -205,7 +283,7 @@ async function submitJob(tasks, developerEmail = null) {
     // Create job in Redis
     await jobManager.createJob(jobId, tasks, developerEmail);
     
-    // Add to BullMQ queue
+    // Add to BullMQ queue with retry configuration
     await jobQueue.add('process-job', {
         jobId,
         tasks,
@@ -213,7 +291,12 @@ async function submitJob(tasks, developerEmail = null) {
     }, {
         jobId, // Use jobId as BullMQ job ID for idempotency
         removeOnComplete: 100, // Keep last 100 completed jobs
-        removeOnFail: 200 // Keep last 200 failed jobs
+        removeOnFail: false, // Don't auto-remove failed jobs
+        attempts: 3, // Retry up to 3 times
+        backoff: {
+            type: 'exponential',
+            delay: 2000 // Start with 2 second delay, doubles each retry
+        }
     });
     
     return jobId;
@@ -273,8 +356,18 @@ jobEvents.on('completed', async ({ jobId, returnvalue }) => {
     console.log(`Job ${jobId} completed:`, returnvalue);
 });
 
-jobEvents.on('failed', async ({ jobId, failedReason }) => {
-    console.error(`Job ${jobId} failed:`, failedReason);
+jobEvents.on('failed', async ({ jobId, failedReason, attemptsMade }) => {
+    console.error(`Job ${jobId} failed (attempt ${attemptsMade}):`, failedReason);
+    
+    // If all retries exhausted, move to dead letter queue
+    const job = await jobQueue.getJob(jobId);
+    if (job && job.attemptsMade >= (job.opts.attempts || 3)) {
+        await deadLetterManager.addToDeadLetter(jobId, failedReason, {
+            attempts: job.attemptsMade,
+            data: job.data,
+            failedAt: Date.now()
+        });
+    }
 });
 
 // Monitor chunk completion
@@ -282,11 +375,22 @@ chunkEvents.on('completed', async ({ jobId }) => {
     console.log(`Chunk ${jobId} completed`);
 });
 
+chunkEvents.on('failed', async ({ jobId, failedReason, attemptsMade }) => {
+    console.error(`Chunk ${jobId} failed (attempt ${attemptsMade}):`, failedReason);
+});
+
+// Monitor dead letter queue
+dlqEvents.on('completed', async ({ jobId }) => {
+    console.log(`DLQ entry ${jobId} processed`);
+});
+
 module.exports = {
     jobQueue,
     chunkQueue,
+    deadLetterQueue,
     jobManager,
     workerRegistry,
     chunkTracker,
+    deadLetterManager,
     submitJob
 };

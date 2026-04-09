@@ -7,7 +7,7 @@ const crypto = require('crypto');
 const auth = require('./auth');
 const { initialize: initializeDB } = require('./database');
 const { redis } = require('./redis');
-const { workerRegistry, chunkTracker, jobManager, submitJob } = require('./queue');
+const { workerRegistry, chunkTracker, jobManager, submitJob, deadLetterManager } = require('./queue');
 const { injectCanaries, validateCanary } = require('./canary');
 const canaryTracker = require('./canary-tracker');
 const path = require('path');
@@ -694,6 +694,47 @@ app.get('/api/superuser/worker-reputation', requireAuth, requireRole('superuser'
     } catch (error) {
         console.error('Failed to get worker reputation:', error);
         res.status(500).json({ error: 'Failed to get worker reputation' });
+    }
+});
+
+app.get('/api/superuser/dead-letter-queue', requireAuth, requireRole('superuser'), async (req, res) => {
+    try {
+        const stats = await deadLetterManager.getDeadLetterStats();
+        res.json(stats);
+    } catch (error) {
+        console.error('Failed to get DLQ stats:', error);
+        res.status(500).json({ error: 'Failed to get dead letter queue stats' });
+    }
+});
+
+app.get('/api/superuser/dead-letter-jobs', requireAuth, requireRole('superuser'), async (req, res) => {
+    try {
+        const limit = parseInt(req.query.limit) || 50;
+        const jobs = await deadLetterManager.getDeadLetterJobs(limit);
+        res.json({ jobs });
+    } catch (error) {
+        console.error('Failed to get DLQ jobs:', error);
+        res.status(500).json({ error: 'Failed to get dead letter jobs' });
+    }
+});
+
+app.post('/api/superuser/retry-dead-letter-job', requireAuth, requireRole('superuser'), async (req, res) => {
+    try {
+        const { jobId } = req.body;
+        
+        if (!jobId) {
+            return res.status(400).json({ error: 'jobId is required' });
+        }
+        
+        const newJobId = await deadLetterManager.retryDeadLetterJob(jobId);
+        res.json({ 
+            message: 'Job resubmitted successfully',
+            originalJobId: jobId,
+            newJobId
+        });
+    } catch (error) {
+        console.error('Failed to retry DLQ job:', error);
+        res.status(500).json({ error: error.message });
     }
 });
 

@@ -27,6 +27,14 @@ interface WorkerReputation {
   last_active_at: string;
 }
 
+interface DeadLetterJob {
+  jobId: string;
+  reason: string;
+  retriesExhausted: number;
+  timestamp: number;
+  metadata: any;
+}
+
 const SuperuserDashboard: React.FC = () => {
   const navigate = useNavigate();
   const [socket] = useState<Socket | null>(null);
@@ -42,6 +50,8 @@ const SuperuserDashboard: React.FC = () => {
   const [workers, setWorkers] = useState<string[]>([]);
   const [jobs, setJobs] = useState<any[]>([]);
   const [workerReputation, setWorkerReputation] = useState<WorkerReputation[]>([]);
+  const [dlqJobs, setDlqJobs] = useState<DeadLetterJob[]>([]);
+  const [dlqStats, setDlqStats] = useState<any>(null);
 
   useEffect(() => {
     const token = localStorage.getItem('nebula-token');
@@ -92,6 +102,13 @@ const SuperuserDashboard: React.FC = () => {
       // Load worker reputation data
       const reputationResponse = await superuser.getWorkerReputation();
       setWorkerReputation(reputationResponse.data.workers || []);
+
+      // Load dead letter queue data
+      const dlqStatsResponse = await superuser.getDeadLetterStats();
+      setDlqStats(dlqStatsResponse.data);
+
+      const dlqJobsResponse = await superuser.getDeadLetterJobs(20);
+      setDlqJobs(dlqJobsResponse.data.jobs || []);
     } catch (error) {
       console.error('Failed to load data:', error);
     }
@@ -101,6 +118,15 @@ const SuperuserDashboard: React.FC = () => {
     localStorage.removeItem('nebula-token');
     localStorage.removeItem('nebula-user');
     navigate('/auth');
+  };
+
+  const handleRetryJob = async (jobId: string) => {
+    try {
+      await superuser.retryDeadLetterJob(jobId);
+      loadAllData();
+    } catch (error) {
+      console.error('Failed to retry job:', error);
+    }
   };
 
   return (
@@ -245,6 +271,62 @@ const SuperuserDashboard: React.FC = () => {
               )}
             </tbody>
           </table>
+        </div>
+
+        <div className="chart-card">
+          <div className="chart-header">
+            <h2 className="chart-title">Dead Letter Queue</h2>
+            {dlqStats && (
+              <span style={{ color: dlqStats.total > 0 ? 'var(--red)' : 'var(--text-dim)' }}>
+                {dlqStats.total} failed jobs
+              </span>
+            )}
+          </div>
+          {dlqStats && dlqStats.total > 0 ? (
+            <>
+              <div style={{ marginBottom: '16px', fontSize: '0.9rem' }}>
+                <div style={{ color: 'var(--text-dim)', marginBottom: '8px' }}>Failure reasons:</div>
+                {Object.entries(dlqStats.byReason).map(([reason, count]: [string, any]) => (
+                  <div key={reason} style={{ marginLeft: '12px' }}>
+                    {reason}: {count}
+                  </div>
+                ))}
+              </div>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Job ID</th>
+                    <th>Reason</th>
+                    <th>Attempts</th>
+                    <th>Failed At</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dlqJobs.map((job, i) => (
+                    <tr key={i}>
+                      <td style={{ fontFamily: 'var(--mono)', fontSize: '0.85rem' }}>
+                        {job.jobId.substring(0, 16)}...
+                      </td>
+                      <td>{job.reason}</td>
+                      <td>{job.retriesExhausted}</td>
+                      <td>{new Date(job.timestamp).toLocaleString()}</td>
+                      <td>
+                        <button 
+                          className="btn-retry"
+                          onClick={() => handleRetryJob(job.jobId)}
+                        >
+                          Retry
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          ) : (
+            <div className="empty-state">No failed jobs</div>
+          )}
         </div>
 
         <div className="chart-card">

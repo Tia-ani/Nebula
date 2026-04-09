@@ -180,6 +180,22 @@
   border: 1px solid var(--red);
 }
 
+.btn-retry {
+  background: var(--purple);
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-retry:hover {
+  background: var(--green);
+  transform: translateY(-1px);
+}
+
 .empty-state {
   text-align: center;
   padding: 40px;

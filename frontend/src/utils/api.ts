@@ -46,6 +46,9 @@ export const superuser = {
   getStats: () => api.get('/api/superuser/stats'),
   getWorkerReputation: () => api.get('/api/superuser/worker-reputation'),
   getFlaggedWorkers: () => api.get('/api/superuser/flagged-workers'),
+  getDeadLetterStats: () => api.get('/api/superuser/dead-letter-queue'),
+  getDeadLetterJobs: (limit = 50) => api.get(`/api/superuser/dead-letter-jobs?limit=${limit}`),
+  retryDeadLetterJob: (jobId: string) => api.post('/api/superuser/retry-dead-letter-job', { jobId }),
 };
 
 export default api;
