@@ -80,11 +80,20 @@ const jobManager = new JobManager();
 
 // Worker heartbeat system
 class WorkerRegistry {
+    // Get Redis server time to avoid clock skew between workers
+    async getRedisTime() {
+        const time = await redis.time();
+        // Redis TIME returns [seconds, microseconds]
+        return parseInt(time[0]) * 1000 + Math.floor(parseInt(time[1]) / 1000);
+    }
+    
     async registerWorker(workerId, workerData) {
+        const redisTime = await this.getRedisTime();
+        
         const data = {
             ...workerData,
-            registeredAt: Date.now(),
-            lastHeartbeat: Date.now()
+            registeredAt: redisTime,
+            lastHeartbeat: redisTime
         };
         
         await redis.set(`worker:${workerId}`, JSON.stringify(data));
@@ -98,7 +107,8 @@ class WorkerRegistry {
         const workerData = await this.getWorker(workerId);
         if (!workerData) return false;
         
-        workerData.lastHeartbeat = Date.now();
+        const redisTime = await this.getRedisTime();
+        workerData.lastHeartbeat = redisTime;
         await redis.set(`worker:${workerId}`, JSON.stringify(workerData));
         await redis.expire(`worker:${workerId}`, 30); // Refresh TTL
         
@@ -283,20 +293,23 @@ async function submitJob(tasks, developerEmail = null) {
     // Create job in Redis
     await jobManager.createJob(jobId, tasks, developerEmail);
     
-    // Add to BullMQ queue with retry configuration
+    // Add to BullMQ queue with retry configuration and deduplication
     await jobQueue.add('process-job', {
         jobId,
         tasks,
         developerEmail
     }, {
-        jobId, // Use jobId as BullMQ job ID for idempotency
+        jobId, // Use jobId as BullMQ job ID for deduplication
         removeOnComplete: 100, // Keep last 100 completed jobs
         removeOnFail: false, // Don't auto-remove failed jobs
         attempts: 3, // Retry up to 3 times
         backoff: {
             type: 'exponential',
             delay: 2000 // Start with 2 second delay, doubles each retry
-        }
+        },
+        // Deduplication: prevent duplicate jobs with same jobId
+        // BullMQ will reject if a job with this ID already exists
+        // This works independently of job duration
     });
     
     return jobId;
@@ -333,7 +346,11 @@ const jobWorker = new Worker('nebula-jobs', async (job) => {
     }
     
     return { jobId, chunks: chunks.length };
-}, { connection });
+}, { 
+    connection,
+    stalledInterval: 30000, // Check for stalled jobs every 30s (BullMQ default)
+    maxStalledCount: 2 // Move to failed after 2 stalled checks
+});
 
 // Process chunks: assign to workers
 const chunkWorker = new Worker('nebula-chunks', async (job) => {
@@ -349,7 +366,11 @@ const chunkWorker = new Worker('nebula-chunks', async (job) => {
     }));
     
     return { chunkId, status: 'ready-for-assignment' };
-}, { connection });
+}, { 
+    connection,
+    stalledInterval: 30000, // Check for stalled jobs every 30s
+    maxStalledCount: 2
+});
 
 // Monitor job completion
 jobEvents.on('completed', async ({ jobId, returnvalue }) => {
