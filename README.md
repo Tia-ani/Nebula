@@ -29,11 +29,10 @@ Three types of participants:
 Make sure Ollama is installed and running, then:
 
 ```bash
-ollama pull llama3.2
 npx nebula-worker start --master https://nebula-mk65.onrender.com --email your@email.com
 ```
 
-Your device is now part of the network. It processes AI chunks silently in the background and earns 50 credits per task.
+Your device is now part of the network. It processes AI chunks silently in the background and earns 50 credits per task. The model (gemma:4b) will auto-install on first run.
 
 **Option 3: GPU Worker (maximum earnings)**
 
@@ -233,7 +232,6 @@ cd ../sdk && npm install
 
 # 3. Start Ollama
 ollama serve
-ollama pull llama3.2
 
 # 4. Build the frontend
 cd frontend && npm run build

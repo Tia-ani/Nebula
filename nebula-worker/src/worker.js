@@ -20,40 +20,91 @@ function decrypt(encryptedData, sessionKey) {
     return JSON.parse(decrypted);
 }
 
+async function pullModel(modelName) {
+    console.log(`\n📥 Downloading ${modelName}...`);
+    console.log('This may take a few minutes on first run.\n');
+    
+    try {
+        const response = await fetch('http://localhost:11434/api/pull', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: modelName, stream: true })
+        });
+
+        if (!response.ok) {
+            throw new Error(`Failed to pull model: ${response.statusText}`);
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let lastStatus = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value);
+            const lines = chunk.split('\n').filter(line => line.trim());
+
+            for (const line of lines) {
+                try {
+                    const data = JSON.parse(line);
+                    if (data.status && data.status !== lastStatus) {
+                        process.stdout.write(`\r${data.status}...`);
+                        lastStatus = data.status;
+                    }
+                } catch (e) {
+                    // Ignore parse errors
+                }
+            }
+        }
+
+        console.log('\n✓ Model downloaded successfully!\n');
+        return true;
+    } catch (err) {
+        console.error(`\n✗ Failed to download model: ${err.message}`);
+        return false;
+    }
+}
+
 async function detectModel(preferredModel) {
+    const defaultModel = 'gemma:4b';
+    
     try {
         const res = await fetch('http://localhost:11434/api/tags');
         const data = await res.json();
         const models = data.models || [];
 
-        if (models.length === 0) {
-            console.log('\n Ollama is running but no models are installed.');
-            console.log(' Run: ollama pull llama3.2');
-            console.log(' Then restart nebula-worker\n');
-            process.exit(1);
-        }
+        const targetModel = preferredModel || defaultModel;
 
-        if (preferredModel) {
-            const match = models.find(m => m.name.includes(preferredModel));
-            if (!match) {
-                console.warn(`Model "${preferredModel}" not found. Using "${models[0].name}" instead.`);
-                return models[0].name;
+        // Check if target model exists
+        const match = models.find(m => m.name.includes(targetModel.split(':')[0]));
+        
+        if (!match) {
+            console.log(`\n Model "${targetModel}" not found locally.`);
+            console.log(' Auto-installing...\n');
+            
+            const success = await pullModel(targetModel);
+            if (!success) {
+                console.log('\n Manual installation:');
+                console.log(` Run: ollama pull ${targetModel}`);
+                console.log(' Then restart nebula-worker\n');
+                process.exit(1);
             }
-            return match.name;
+            
+            return targetModel;
         }
 
-        const preferred = models.find(m => m.name.includes('llama3.2'));
-        return preferred ? preferred.name : models[0].name;
+        return match.name;
 
     } catch (err) {
         console.log('\n Ollama not detected on your machine.');
         console.log('');
         console.log(' To contribute compute and earn credits:');
         console.log(' 1. Install Ollama  →  https://ollama.ai');
-        console.log(' 2. Run: ollama pull llama3.2');
-        console.log(' 3. Restart nebula-worker');
+        console.log(' 2. Restart nebula-worker (model will auto-install)');
         console.log('');
-        console.log(' Browser worker coming soon — no install needed.');
+        console.log(' Browser worker available at the dashboard — no install needed.');
         console.log('');
         process.exit(1);
     }
