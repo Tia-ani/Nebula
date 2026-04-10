@@ -42,10 +42,25 @@ const AuthPage: React.FC = () => {
     setError('');
 
     try {
-      const response = await auth.signup({ name: signupName, email: signupEmail, password: signupPassword });
+      // Detect OS
+      const userAgent = navigator.userAgent.toLowerCase();
+      let os = 'unknown';
+      if (userAgent.includes('mac')) os = 'macos';
+      else if (userAgent.includes('win')) os = 'windows';
+      else if (userAgent.includes('linux')) os = 'linux';
+
+      const response = await auth.signup({ 
+        name: signupName, 
+        email: signupEmail, 
+        password: signupPassword 
+      });
       const data = response.data;
+      
+      // Store OS info
+      const userData = { ...data.user, os };
+      
       localStorage.setItem('nebula-token', data.token);
-      localStorage.setItem('nebula-user', JSON.stringify(data.user));
+      localStorage.setItem('nebula-user', JSON.stringify(userData));
       navigate('/role-select');
     } catch (err: any) {
       setError(err.response?.data?.error || err.message || 'Signup failed');

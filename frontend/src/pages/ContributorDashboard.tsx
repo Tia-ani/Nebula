@@ -121,12 +121,17 @@ const ContributorDashboard: React.FC = () => {
         downloadWorkerScript(user.email, false);
         
         setWorkerStates(prev => ({ ...prev, cpu: true }));
+        
+        const os = user.os || 'unknown';
+        const fileType = os === 'macos' ? '.command' : os === 'windows' ? '.bat' : '.sh';
+        const instruction = os === 'macos' ? 'Double-click the file' : os === 'windows' ? 'Double-click the file' : 'Run: bash start-nebula-worker.sh';
+        
         alert(
           'Worker script downloaded!\n\n' +
           '1. Open your Downloads folder\n' +
-          '2. Double-click: start-nebula-worker.sh\n' +
-          '   (or run: bash start-nebula-worker.sh)\n' +
-          '3. Keep the terminal open to earn credits\n\n' +
+          `2. ${instruction}\n` +
+          '3. Keep the window open to earn credits\n' +
+          '4. Gemma model will auto-install if needed\n\n' +
           'You earn 50 credits per task!'
         );
       }
@@ -168,6 +173,133 @@ const ContributorDashboard: React.FC = () => {
   };
 
   const downloadWorkerScript = (email: string, isGPU: boolean) => {
+    const masterUrl = window.location.origin;
+    const gpuFlag = isGPU ? ' --gpu' : '';
+    const user = JSON.parse(localStorage.getItem('nebula-user') || '{}');
+    const os = user.os || 'unknown';
+    
+    let scriptContent = '';
+    let filename = '';
+    let fileExtension = '';
+    
+    if (os === 'macos') {
+      // macOS .command file (double-clickable)
+      filename = 'start-nebula-worker.command';
+      fileExtension = '.command';
+      scriptContent = `#!/bin/bash
+# Nebula Worker Auto-Start Script
+# Double-click this file to start earning!
+# Generated for: ${email}
+
+echo "🚀 Starting Nebula Worker..."
+echo "Email: ${email}"
+echo "Type: ${isGPU ? 'GPU' : 'CPU'}"
+echo "Master: ${masterUrl}"
+echo ""
+
+# Check if Ollama is running
+if ! curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
+    echo "❌ Ollama is not running!"
+    echo ""
+    echo "Please start Ollama first:"
+    echo "  1. Open Ollama app"
+    echo "  2. Or run: ollama serve"
+    echo ""
+    read -p "Press Enter to exit..."
+    exit 1
+fi
+
+echo "✅ Ollama is ready!"
+echo ""
+echo "Starting worker... Press Ctrl+C to stop"
+echo ""
+
+# Start the worker (gemma:4b will auto-install if needed)
+npx nebula-worker start --master ${masterUrl}${gpuFlag} --email ${email}
+`;
+    } else if (os === 'windows') {
+      // Windows .bat file (double-clickable)
+      filename = 'start-nebula-worker.bat';
+      fileExtension = '.bat';
+      scriptContent = `@echo off
+REM Nebula Worker Auto-Start Script
+REM Double-click this file to start earning!
+REM Generated for: ${email}
+
+echo Starting Nebula Worker...
+echo Email: ${email}
+echo Type: ${isGPU ? 'GPU' : 'CPU'}
+echo Master: ${masterUrl}
+echo.
+
+REM Check if Ollama is running
+curl -s http://localhost:11434/api/tags >nul 2>&1
+if errorlevel 1 (
+    echo Ollama is not running!
+    echo.
+    echo Please start Ollama first:
+    echo   1. Open Ollama app
+    echo   2. Or run: ollama serve
+    echo.
+    pause
+    exit /b 1
+)
+
+echo Ollama is ready!
+echo.
+echo Starting worker... Press Ctrl+C to stop
+echo.
+
+REM Start the worker (gemma:4b will auto-install if needed)
+npx nebula-worker start --master ${masterUrl}${gpuFlag} --email ${email}
+pause
+`;
+    } else {
+      // Linux .sh file
+      filename = 'start-nebula-worker.sh';
+      fileExtension = '.sh';
+      scriptContent = `#!/bin/bash
+# Nebula Worker Auto-Start Script
+# Generated for: ${email}
+
+echo "🚀 Starting Nebula Worker..."
+echo "Email: ${email}"
+echo "Type: ${isGPU ? 'GPU' : 'CPU'}"
+echo "Master: ${masterUrl}"
+echo ""
+
+# Check if Ollama is running
+if ! curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
+    echo "❌ Ollama is not running!"
+    echo ""
+    echo "Please start Ollama first:"
+    echo "  1. Run: ollama serve"
+    echo ""
+    exit 1
+fi
+
+echo "✅ Ollama is ready!"
+echo ""
+echo "Starting worker... Press Ctrl+C to stop"
+echo ""
+
+# Start the worker (gemma:4b will auto-install if needed)
+npx nebula-worker start --master ${masterUrl}${gpuFlag} --email ${email}
+`;
+    }
+    
+    const blob = new Blob([scriptContent], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadWorkerScriptOld = (email: string, isGPU: boolean) => {
     const masterUrl = window.location.origin;
     const gpuFlag = isGPU ? ' --gpu' : '';
     

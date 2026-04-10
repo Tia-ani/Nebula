@@ -246,14 +246,17 @@ const SuperuserDashboard: React.FC = () => {
               {workerReputation.length > 0 ? (
                 workerReputation.map((w, i) => {
                   const isFlagged = w.total_canaries >= 5 && w.canary_pass_rate < 85;
+                  const passRate = w.canary_pass_rate != null ? Number(w.canary_pass_rate).toFixed(1) : '0.0';
+                  const reputation = w.reputation_score != null ? Number(w.reputation_score).toFixed(2) : '0.00';
+                  
                   return (
                     <tr key={i} style={isFlagged ? { backgroundColor: 'rgba(255, 59, 48, 0.1)' } : {}}>
                       <td>{w.user_email || 'Anonymous'}</td>
                       <td><span className="badge">{w.worker_type}</span></td>
                       <td style={{ color: isFlagged ? 'var(--red)' : 'inherit' }}>
-                        {w.canary_pass_rate?.toFixed(1) || '0.0'}%
+                        {passRate}%
                       </td>
-                      <td>{w.reputation_score?.toFixed(2) || '0.00'}</td>
+                      <td>{reputation}</td>
                       <td>{w.canaries_passed || 0}/{w.total_canaries || 0}</td>
                       <td>{w.chunks_completed || 0}</td>
                       <td>
