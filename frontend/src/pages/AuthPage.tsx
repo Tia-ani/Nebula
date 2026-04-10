@@ -16,6 +16,7 @@ const AuthPage: React.FC = () => {
   const [signupName, setSignupName] = useState('');
   const [signupEmail, setSignupEmail] = useState('');
   const [signupPassword, setSignupPassword] = useState('');
+  const [signupOS, setSignupOS] = useState<'macos' | 'windows' | 'linux'>('macos');
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,13 +43,6 @@ const AuthPage: React.FC = () => {
     setError('');
 
     try {
-      // Detect OS
-      const userAgent = navigator.userAgent.toLowerCase();
-      let os = 'unknown';
-      if (userAgent.includes('mac')) os = 'macos';
-      else if (userAgent.includes('win')) os = 'windows';
-      else if (userAgent.includes('linux')) os = 'linux';
-
       const response = await auth.signup({ 
         name: signupName, 
         email: signupEmail, 
@@ -56,8 +50,8 @@ const AuthPage: React.FC = () => {
       });
       const data = response.data;
       
-      // Store OS info
-      const userData = { ...data.user, os };
+      // Store OS info from user selection
+      const userData = { ...data.user, os: signupOS };
       
       localStorage.setItem('nebula-token', data.token);
       localStorage.setItem('nebula-user', JSON.stringify(userData));
@@ -150,6 +144,18 @@ const AuthPage: React.FC = () => {
                 required
                 minLength={6}
               />
+            </div>
+            <div className="form-group">
+              <label>Operating System</label>
+              <select 
+                value={signupOS} 
+                onChange={(e) => setSignupOS(e.target.value as 'macos' | 'windows' | 'linux')}
+                required
+              >
+                <option value="macos">macOS</option>
+                <option value="windows">Windows</option>
+                <option value="linux">Linux</option>
+              </select>
             </div>
             <button type="submit" className="btn-primary">Create Account</button>
           </form>
