@@ -212,6 +212,134 @@ class ChunkTracker {
 
 const chunkTracker = new ChunkTracker();
 
+// Straggler Detection and Speculative Re-execution
+class StragglerDetector {
+    constructor() {
+        this.chunkTimings = new Map(); // chunkId -> { startTime, workerId, jobId }
+        this.jobMedianTimes = new Map(); // jobId -> median completion time
+        this.speculativeExecutions = new Set(); // Track which chunks have speculative copies
+    }
+    
+    // Record when a chunk starts execution
+    async startChunk(chunkId, workerId, jobId) {
+        const redisTime = await workerRegistry.getRedisTime();
+        this.chunkTimings.set(chunkId, {
+            startTime: redisTime,
+            workerId,
+            jobId
+        });
+        
+        // Store in Redis for persistence
+        await redis.set(`chunk:timing:${chunkId}`, JSON.stringify({
+            startTime: redisTime,
+            workerId,
+            jobId
+        }));
+        await redis.expire(`chunk:timing:${chunkId}`, 600); // 10 min TTL
+    }
+    
+    // Record when a chunk completes
+    async completeChunk(chunkId) {
+        const timing = this.chunkTimings.get(chunkId);
+        if (!timing) return;
+        
+        const redisTime = await workerRegistry.getRedisTime();
+        const duration = redisTime - timing.startTime;
+        
+        // Store completion time for this job
+        await redis.lpush(`job:${timing.jobId}:completion-times`, duration);
+        await redis.ltrim(`job:${timing.jobId}:completion-times`, 0, 99); // Keep last 100
+        
+        // Update median for this job
+        await this.updateMedianTime(timing.jobId);
+        
+        // Cleanup
+        this.chunkTimings.delete(chunkId);
+        await redis.del(`chunk:timing:${chunkId}`);
+        
+        console.log(`Chunk ${chunkId} completed in ${duration}ms`);
+    }
+    
+    // Calculate and update median completion time for a job
+    async updateMedianTime(jobId) {
+        const times = await redis.lrange(`job:${jobId}:completion-times`, 0, -1);
+        if (times.length === 0) return;
+        
+        const sorted = times.map(t => parseInt(t)).sort((a, b) => a - b);
+        const median = sorted[Math.floor(sorted.length / 2)];
+        
+        this.jobMedianTimes.set(jobId, median);
+        await redis.set(`job:${jobId}:median-time`, median);
+        
+        console.log(`Job ${jobId} median time: ${median}ms (${sorted.length} samples)`);
+    }
+    
+    // Check for stragglers and trigger speculative execution
+    async checkForStragglers() {
+        const redisTime = await workerRegistry.getRedisTime();
+        
+        for (const [chunkId, timing] of this.chunkTimings.entries()) {
+            const elapsed = redisTime - timing.startTime;
+            const median = this.jobMedianTimes.get(timing.jobId);
+            
+            // If no median yet (first few chunks), skip
+            if (!median) continue;
+            
+            // If chunk is taking > 2x median time, it's a straggler
+            const stragglerThreshold = median * 2;
+            
+            if (elapsed > stragglerThreshold && !this.speculativeExecutions.has(chunkId)) {
+                console.log(`⚠️  Straggler detected: ${chunkId} (${elapsed}ms > ${stragglerThreshold}ms threshold)`);
+                
+                // Mark as having speculative execution
+                this.speculativeExecutions.add(chunkId);
+                
+                // Get chunk data from Redis
+                const chunkData = await redis.get(`chunk:${chunkId}`);
+                if (chunkData) {
+                    const chunk = JSON.parse(chunkData);
+                    
+                    // Re-add to queue with speculative flag
+                    await chunkQueue.add('process-chunk', {
+                        ...chunk,
+                        speculative: true,
+                        originalWorkerId: timing.workerId,
+                        originalChunkId: chunkId
+                    });
+                    
+                    console.log(`🚀 Speculative execution triggered for ${chunkId}`);
+                }
+            }
+        }
+    }
+    
+    // Handle when a speculative execution completes first
+    async handleSpeculativeWin(originalChunkId) {
+        // Cancel the original slow execution
+        this.chunkTimings.delete(originalChunkId);
+        this.speculativeExecutions.delete(originalChunkId);
+        await redis.del(`chunk:timing:${originalChunkId}`);
+        
+        console.log(`✓ Speculative execution won for ${originalChunkId}`);
+    }
+    
+    // Start background monitoring
+    startMonitoring(intervalMs = 5000) {
+        setInterval(() => {
+            this.checkForStragglers().catch(err => {
+                console.error('Straggler check failed:', err);
+            });
+        }, intervalMs);
+        
+        console.log(`Straggler detector started (checking every ${intervalMs}ms)`);
+    }
+}
+
+const stragglerDetector = new StragglerDetector();
+
+// Start monitoring for stragglers
+stragglerDetector.startMonitoring(5000); // Check every 5 seconds
+
 // Dead Letter Queue Manager
 class DeadLetterManager {
     async addToDeadLetter(jobId, reason, metadata = {}) {
@@ -413,5 +541,6 @@ module.exports = {
     workerRegistry,
     chunkTracker,
     deadLetterManager,
+    stragglerDetector,
     submitJob
 };

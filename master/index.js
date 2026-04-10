@@ -7,7 +7,7 @@ const crypto = require('crypto');
 const auth = require('./auth');
 const { initialize: initializeDB } = require('./database');
 const { redis } = require('./redis');
-const { workerRegistry, chunkTracker, jobManager, submitJob, deadLetterManager } = require('./queue');
+const { workerRegistry, chunkTracker, jobManager, submitJob, deadLetterManager, stragglerDetector } = require('./queue');
 const { injectCanaries, validateCanary } = require('./canary');
 const canaryTracker = require('./canary-tracker');
 const path = require('path');
@@ -97,7 +97,7 @@ io.on('connection', (socket) => {
     }
 
     socket.on('chunk-result', async (data) => {
-        let jobId, result;
+        let jobId, result, chunkId;
 
         const worker = workers.find(w => w.id === socket.id);
         if (!worker) return;
@@ -106,14 +106,21 @@ io.on('connection', (socket) => {
             const parsed = JSON.parse(data.replace('PLAIN:', ''));
             jobId = parsed.jobId;
             result = parsed.result;
+            chunkId = parsed.chunkId;
         } else {
             const decrypted = decrypt(data, worker.sessionKey);
             jobId = decrypted.jobId;
             result = decrypted.result;
+            chunkId = decrypted.chunkId;
         }
 
         const job = jobs[jobId];
         if (!job) return;
+
+        // Track chunk completion time for straggler detection
+        if (chunkId) {
+            await stragglerDetector.completeChunk(chunkId);
+        }
 
         job.pendingResults.push(result);
         const chunkSize = job.workerChunkMap[socket.id]?.length || 0;
@@ -332,13 +339,19 @@ app.post('/api/v1/run', requireApiKey, (req, res) => {
 
     chunks.forEach((chunk, index) => {
         const worker = workers[index % workers.length];
+        const chunkId = `${jobId}-chunk-${index}`;
+        
         let payload;
         if (worker.type === 'browser-worker') {
-            payload = 'PLAIN:' + JSON.stringify({ jobId, chunk });
+            payload = 'PLAIN:' + JSON.stringify({ jobId, chunk, chunkId });
         } else {
-            payload = encrypt({ jobId, chunk }, worker.sessionKey);
+            payload = encrypt({ jobId, chunk, chunkId }, worker.sessionKey);
         }
         jobs[jobId].workerChunkMap[worker.id] = chunk;
+        
+        // Track chunk start time for straggler detection
+        stragglerDetector.startChunk(chunkId, worker.id, jobId);
+        
         io.to(worker.id).emit('task-chunk', { chunk: payload });
     });
 });
@@ -373,15 +386,20 @@ app.post('/job', (req, res) => {
 
     chunks.forEach((chunk, index) => {
         const worker = workers[index];
+        const chunkId = `${jobId}-chunk-${index}`;
 
         let payload;
         if (worker.type === 'browser-worker') {
-            payload = 'PLAIN:' + JSON.stringify({ jobId, chunk });
+            payload = 'PLAIN:' + JSON.stringify({ jobId, chunk, chunkId });
         } else {
-            payload = encrypt({ jobId, chunk }, worker.sessionKey);
+            payload = encrypt({ jobId, chunk, chunkId }, worker.sessionKey);
         }
 
         jobs[jobId].workerChunkMap[worker.id] = chunk;
+        
+        // Track chunk start time for straggler detection
+        stragglerDetector.startChunk(chunkId, worker.id, jobId);
+        
         io.to(worker.id).emit('task-chunk', { chunk: payload });
     });
 });
@@ -622,6 +640,7 @@ app.post('/api/developer/submit-job', requireAuth, requireRole('developer'), asy
     let taskOffset = 0;
     chunks.forEach((chunk, chunkIndex) => {
         const worker = workers[chunkIndex % workers.length];
+        const chunkId = `${jobId}-chunk-${chunkIndex}`;
         
         // Find which tasks in this chunk are canaries
         const chunkCanaries = {};
@@ -638,11 +657,15 @@ app.post('/api/developer/submit-job', requireAuth, requireRole('developer'), asy
         
         let payload;
         if (worker.type === 'browser-worker') {
-            payload = 'PLAIN:' + JSON.stringify({ jobId, chunk });
+            payload = 'PLAIN:' + JSON.stringify({ jobId, chunk, chunkId });
         } else {
-            payload = encrypt({ jobId, chunk }, worker.sessionKey);
+            payload = encrypt({ jobId, chunk, chunkId }, worker.sessionKey);
         }
         jobs[jobId].workerChunkMap[worker.id] = chunk;
+        
+        // Track chunk start time for straggler detection
+        stragglerDetector.startChunk(chunkId, worker.id, jobId);
+        
         io.to(worker.id).emit('task-chunk', { chunk: payload });
     });
 });
