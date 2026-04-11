@@ -1,6 +1,6 @@
 {
     "name": "nebula-worker",
-    "version": "1.0.1",
+    "version": "1.1.0",
     "description": "Contribute your idle compute to the Nebula network",
     "main": "src/worker.js",
     "bin": {
@@ -14,7 +14,8 @@
         "nebula",
         "distributed-compute",
         "ai",
-        "ollama"
+        "ollama",
+        "gemma"
     ],
     "license": "MIT"
 }
