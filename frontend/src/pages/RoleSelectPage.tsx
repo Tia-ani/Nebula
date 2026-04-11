@@ -8,9 +8,15 @@ const RoleSelectPage: React.FC = () => {
 
   const handleSelectRole = async (role: 'contributor' | 'developer') => {
     try {
+      // Get current user data to preserve OS info
+      const currentUser = JSON.parse(localStorage.getItem('nebula-user') || '{}');
+      
       const response = await auth.selectRole(role);
       const data = response.data;
-      localStorage.setItem('nebula-user', JSON.stringify(data.user));
+      
+      // Preserve OS info from signup
+      const updatedUser = { ...data.user, os: currentUser.os };
+      localStorage.setItem('nebula-user', JSON.stringify(updatedUser));
 
       if (role === 'contributor') {
         navigate('/contributor-dashboard');
