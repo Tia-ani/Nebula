@@ -27,6 +27,9 @@ export const auth = {
   
   selectRole: (role: string) =>
     api.post('/api/auth/select-role', { role }),
+  
+  deleteAccount: () =>
+    api.delete('/api/auth/delete-account'),
 };
 
 export const contributor = {

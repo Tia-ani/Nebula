@@ -471,6 +471,27 @@ app.post('/api/auth/select-role', requireAuth, async (req, res) => {
     res.json(result);
 });
 
+app.delete('/api/auth/delete-account', requireAuth, async (req, res) => {
+    try {
+        const { pool } = require('./database');
+        const userId = req.user.id;
+        const userEmail = req.user.email;
+        
+        // Delete in order (foreign key constraints)
+        await pool.query('DELETE FROM credit_transactions WHERE user_id = $1', [userId]);
+        await pool.query('DELETE FROM canary_tracking WHERE user_email = $1', [userEmail]);
+        await pool.query('DELETE FROM worker_metrics WHERE user_email = $1', [userEmail]);
+        await pool.query('DELETE FROM sessions WHERE user_id = $1', [userId]);
+        await pool.query('DELETE FROM users WHERE id = $1', [userId]);
+        
+        console.log(`Account deleted: ${userEmail}`);
+        res.json({ message: 'Account deleted successfully' });
+    } catch (error) {
+        console.error('Failed to delete account:', error);
+        res.status(500).json({ error: 'Failed to delete account' });
+    }
+});
+
 // ─── Contributor Routes ───────────────────────────────────────────
 
 app.get('/api/contributor/check-ollama', async (req, res) => {

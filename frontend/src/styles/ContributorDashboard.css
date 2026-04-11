@@ -45,6 +45,22 @@
   color: var(--purple);
 }
 
+.btn-link {
+  padding: 8px 20px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+  transition: all 0.2s;
+}
+
+.btn-link:hover {
+  border-color: var(--green);
+  color: var(--green);
+}
+
 .container {
   max-width: 1200px;
   margin: 0 auto;

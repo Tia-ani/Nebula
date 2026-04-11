@@ -418,6 +418,7 @@ npx nebula-worker start --master ${masterUrl} --email ${email}${gpuFlag}
           <div className="logo">NEBULA</div>
           <div className="user-info">
             <span className="user-name">{user.name}</span>
+            <button className="btn-link" onClick={() => navigate('/profile')}>Profile</button>
             <button className="btn-logout" onClick={handleLogout}>Logout</button>
           </div>
         </div>

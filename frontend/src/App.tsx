@@ -7,6 +7,7 @@ import RoleSelectPage from './pages/RoleSelectPage';
 import ContributorDashboard from './pages/ContributorDashboard';
 import DeveloperDashboard from './pages/DeveloperDashboard';
 import SuperuserDashboard from './pages/SuperuserDashboard';
+import ProfilePage from './pages/ProfilePage';
 
 const App: React.FC = () => {
   return (
@@ -18,6 +19,7 @@ const App: React.FC = () => {
         <Route path="/contributor-dashboard" element={<ContributorDashboard />} />
         <Route path="/developer-dashboard" element={<DeveloperDashboard />} />
         <Route path="/superuser-dashboard" element={<SuperuserDashboard />} />
+        <Route path="/profile" element={<ProfilePage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Router>
