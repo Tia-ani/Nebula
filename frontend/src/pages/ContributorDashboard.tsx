@@ -116,24 +116,30 @@ const ContributorDashboard: React.FC = () => {
           return;
         }
 
-        // Ollama is running, download worker script
+        // Ollama is running, show copy-paste command
         const user = JSON.parse(localStorage.getItem('nebula-user') || '{}');
-        downloadWorkerScript(user.email, false);
+        const masterUrl = window.location.origin;
+        const command = `npx nebula-worker start --master ${masterUrl} --email ${user.email}`;
         
         setWorkerStates(prev => ({ ...prev, cpu: true }));
         
-        const os = user.os || 'unknown';
-        const fileType = os === 'macos' ? '.command' : os === 'windows' ? '.bat' : '.sh';
-        const instruction = os === 'macos' ? 'Double-click the file' : os === 'windows' ? 'Double-click the file' : 'Run: bash start-nebula-worker.sh';
-        
-        alert(
-          'Worker script downloaded!\n\n' +
-          '1. Open your Downloads folder\n' +
-          `2. ${instruction}\n` +
-          '3. Keep the window open to earn credits\n' +
-          '4. Gemma model will auto-install if needed\n\n' +
-          'You earn 50 credits per task!'
-        );
+        // Copy to clipboard
+        navigator.clipboard.writeText(command).then(() => {
+          alert(
+            '✓ Command copied to clipboard!\n\n' +
+            'Open Terminal and paste:\n' +
+            command + '\n\n' +
+            'Steps:\n' +
+            '1. Open Terminal (Cmd+Space, type "Terminal")\n' +
+            '2. Paste the command (Cmd+V)\n' +
+            '3. Press Enter\n' +
+            '4. Gemma model will auto-install if needed\n\n' +
+            'You earn 50 credits per task!'
+          );
+        }).catch(() => {
+          // Fallback if clipboard fails
+          prompt('Copy this command and run it in Terminal:', command);
+        });
       }
       return;
     }
@@ -155,19 +161,28 @@ const ContributorDashboard: React.FC = () => {
           return;
         }
 
-        // Download GPU worker script
+        // Show copy-paste command for GPU worker
         const user = JSON.parse(localStorage.getItem('nebula-user') || '{}');
-        downloadWorkerScript(user.email, true);
+        const masterUrl = window.location.origin;
+        const command = `npx nebula-worker start --gpu --master ${masterUrl} --email ${user.email}`;
 
         setWorkerStates(prev => ({ ...prev, gpu: true }));
-        alert(
-          'GPU Worker script downloaded!\n\n' +
-          '1. Open your Downloads folder\n' +
-          '2. Double-click: start-nebula-worker.sh\n' +
-          '   (or run: bash start-nebula-worker.sh)\n' +
-          '3. Keep the terminal open to earn credits\n\n' +
-          'You earn 100 credits per task!'
-        );
+        
+        // Copy to clipboard
+        navigator.clipboard.writeText(command).then(() => {
+          alert(
+            '✓ Command copied to clipboard!\n\n' +
+            'Open Terminal and paste:\n' +
+            command + '\n\n' +
+            'Steps:\n' +
+            '1. Open Terminal\n' +
+            '2. Paste the command (Cmd+V)\n' +
+            '3. Press Enter\n\n' +
+            'You earn 100 credits per task!'
+          );
+        }).catch(() => {
+          prompt('Copy this command and run it in Terminal:', command);
+        });
       }
     }
   };
