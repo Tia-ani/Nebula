@@ -15,6 +15,36 @@ const cors = require('cors');
 const multer = require('multer');
 const { parseFile } = require('./file-parser');
 const fs = require('fs');
+const Groq = require('groq-sdk');
+
+// Initialize Groq client
+const groq = new Groq({
+    apiKey: process.env.GROQ_API_KEY
+});
+
+// Rate limiting for Groq API (30 req/min free tier)
+const groqRateLimiter = {
+    requests: [],
+    maxPerMinute: 30,
+    
+    async checkAndWait() {
+        const now = Date.now();
+        // Remove requests older than 1 minute
+        this.requests = this.requests.filter(time => now - time < 60000);
+        
+        if (this.requests.length >= this.maxPerMinute) {
+            // Wait until oldest request expires
+            const oldestRequest = this.requests[0];
+            const waitTime = 60000 - (now - oldestRequest) + 100; // +100ms buffer
+            console.log(`[Groq] Rate limit reached. Waiting ${waitTime}ms...`);
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+            return this.checkAndWait(); // Recursive check
+        }
+        
+        this.requests.push(now);
+        return true;
+    }
+};
 
 // Ensure upload directory exists
 const uploadDir = '/tmp/nebula-uploads/';
@@ -598,6 +628,52 @@ app.delete('/api/auth/delete-account', requireAuth, async (req, res) => {
 });
 
 // ─── Contributor Routes ───────────────────────────────────────────
+
+// Groq API proxy for browser workers (Nebula pays for API)
+app.post('/api/contributor/groq-inference', async (req, res) => {
+    try {
+        const { task, workerEmail } = req.body;
+        
+        if (!task || typeof task !== 'string') {
+            return res.status(400).json({ error: 'Invalid task' });
+        }
+        
+        if (!workerEmail) {
+            return res.status(400).json({ error: 'Worker email required' });
+        }
+        
+        // Check rate limit
+        await groqRateLimiter.checkAndWait();
+        
+        console.log(`[Groq] Processing task for ${workerEmail}`);
+        
+        // Call Groq API
+        const completion = await groq.chat.completions.create({
+            messages: [
+                {
+                    role: 'user',
+                    content: task
+                }
+            ],
+            model: 'llama3-8b-8192', // Free tier model
+            temperature: 0.1,
+            max_tokens: 150
+        });
+        
+        const result = completion.choices[0].message.content.trim();
+        
+        res.json({ result });
+        
+    } catch (error) {
+        console.error('[Groq] API error:', error.message);
+        
+        if (error.message.includes('rate_limit')) {
+            return res.status(429).json({ error: 'Rate limit exceeded. Please wait.' });
+        }
+        
+        res.status(500).json({ error: 'Failed to process task', message: error.message });
+    }
+});
 
 app.get('/api/contributor/check-ollama', async (req, res) => {
     try {

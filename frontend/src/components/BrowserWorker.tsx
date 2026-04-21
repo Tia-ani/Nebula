@@ -93,31 +93,38 @@ const BrowserWorker: React.FC<BrowserWorkerProps> = ({ onStop }) => {
       return answer;
     }
     
-    // For real tasks, try to use OpenAI API if available
-    const apiKey = localStorage.getItem('openai-api-key');
-    if (apiKey) {
-      try {
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    // For real tasks, use Nebula's Groq API proxy
+    try {
+      const user = JSON.parse(localStorage.getItem('nebula-user') || '{}');
+      const response = await fetch('http://localhost:3000/api/contributor/groq-inference', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          task: task,
+          workerEmail: user.email
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        return data.result;
+      } else if (response.status === 429) {
+        // Rate limit - wait and retry once
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        const retryResponse = await fetch('http://localhost:3000/api/contributor/groq-inference', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`
-          },
-          body: JSON.stringify({
-            model: 'gpt-3.5-turbo',
-            messages: [{ role: 'user', content: task }],
-            temperature: 0.7,
-            max_tokens: 100
-          })
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ task, workerEmail: user.email })
         });
-        
-        if (response.ok) {
-          const data = await response.json();
-          return data.choices[0].message.content.trim();
+        if (retryResponse.ok) {
+          const data = await retryResponse.json();
+          return data.result;
         }
-      } catch (error) {
-        console.error('OpenAI API error:', error);
       }
+    } catch (error) {
+      console.error('Groq API error:', error);
     }
     
     // Fallback: Try to give a reasonable answer based on task type
@@ -126,8 +133,8 @@ const BrowserWorker: React.FC<BrowserWorkerProps> = ({ onStop }) => {
       return sentiment;
     }
     
-    // Last resort: return a generic response
-    return `Unable to process: ${task.substring(0, 50)}${task.length > 50 ? '...' : ''}`;
+    // Last resort: return error
+    return `Error: Unable to process task`;
   };
 
   const tryAnswerTask = (task: string): string | null => {
