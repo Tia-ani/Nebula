@@ -96,7 +96,9 @@ const BrowserWorker: React.FC<BrowserWorkerProps> = ({ onStop }) => {
     // For real tasks, use Nebula's Groq API proxy
     try {
       const user = JSON.parse(localStorage.getItem('nebula-user') || '{}');
-      const response = await fetch('http://localhost:3000/api/contributor/groq-inference', {
+      const masterUrl = window.location.origin;
+      
+      const response = await fetch(`${masterUrl}/api/contributor/groq-inference`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -113,7 +115,7 @@ const BrowserWorker: React.FC<BrowserWorkerProps> = ({ onStop }) => {
       } else if (response.status === 429) {
         // Rate limit - wait and retry once
         await new Promise(resolve => setTimeout(resolve, 2000));
-        const retryResponse = await fetch('http://localhost:3000/api/contributor/groq-inference', {
+        const retryResponse = await fetch(`${masterUrl}/api/contributor/groq-inference`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ task, workerEmail: user.email })
@@ -122,6 +124,9 @@ const BrowserWorker: React.FC<BrowserWorkerProps> = ({ onStop }) => {
           const data = await retryResponse.json();
           return data.result;
         }
+      } else if (response.status === 503) {
+        // Groq not configured - use fallback
+        console.log('Groq API not available, using fallback');
       }
     } catch (error) {
       console.error('Groq API error:', error);

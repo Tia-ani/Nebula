@@ -17,10 +17,16 @@ const { parseFile } = require('./file-parser');
 const fs = require('fs');
 const Groq = require('groq-sdk');
 
-// Initialize Groq client
-const groq = new Groq({
-    apiKey: process.env.GROQ_API_KEY
-});
+// Initialize Groq client (optional - only if API key is provided)
+let groq = null;
+if (process.env.GROQ_API_KEY) {
+    groq = new Groq({
+        apiKey: process.env.GROQ_API_KEY
+    });
+    console.log('✓ Groq API initialized for browser workers');
+} else {
+    console.log('⚠️  GROQ_API_KEY not set - browser workers will use fallback mode');
+}
 
 // Rate limiting for Groq API (30 req/min free tier)
 const groqRateLimiter = {
@@ -642,6 +648,14 @@ app.post('/api/contributor/groq-inference', async (req, res) => {
             return res.status(400).json({ error: 'Worker email required' });
         }
         
+        // Check if Groq is available
+        if (!groq) {
+            return res.status(503).json({ 
+                error: 'Groq API not configured',
+                fallback: true 
+            });
+        }
+        
         // Check rate limit
         await groqRateLimiter.checkAndWait();
         
@@ -671,7 +685,11 @@ app.post('/api/contributor/groq-inference', async (req, res) => {
             return res.status(429).json({ error: 'Rate limit exceeded. Please wait.' });
         }
         
-        res.status(500).json({ error: 'Failed to process task', message: error.message });
+        res.status(500).json({ 
+            error: 'Failed to process task', 
+            message: error.message,
+            fallback: true 
+        });
     }
 });
 

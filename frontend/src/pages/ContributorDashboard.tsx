@@ -357,11 +357,20 @@ npx nebula-worker start --master ${masterUrl} --email ${email}${gpuFlag}
 
   const checkOllama = async (): Promise<boolean> => {
     try {
-      const response = await fetch(`${window.location.origin}/api/contributor/check-ollama`);
-      const data = await response.json();
-      return data.running === true;
+      // Check Ollama directly from browser (user's machine)
+      const response = await fetch('http://localhost:11434/api/tags', {
+        method: 'GET',
+        signal: AbortSignal.timeout(2000)
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Ollama detected:', data.models?.length || 0, 'models');
+        return true;
+      }
+      return false;
     } catch (error) {
-      console.log('Ollama check failed:', error);
+      console.log('Ollama not detected:', error);
       return false;
     }
   };
