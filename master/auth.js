@@ -266,21 +266,26 @@ async function updateUserCredits(email, amount, operation = 'add') {
                 throw new Error('User not found');
             }
 
+            // Convert to numbers (database might return strings)
+            const currentCredits = parseInt(user.credits) || 0;
+            const currentEarned = parseInt(user.credits_earned) || 0;
+            const currentSpent = parseInt(user.credits_spent) || 0;
+
             let newCredits, newEarned, newSpent;
             let transactionType;
 
             if (operation === 'add') {
-                newCredits = user.credits + amount;
-                newEarned = user.credits_earned + amount;
-                newSpent = user.credits_spent;
+                newCredits = currentCredits + amount;
+                newEarned = currentEarned + amount;
+                newSpent = currentSpent;
                 transactionType = 'earn';
             } else if (operation === 'subtract') {
-                if (user.credits < amount) {
+                if (currentCredits < amount) {
                     throw new Error('Insufficient credits');
                 }
-                newCredits = user.credits - amount;
-                newEarned = user.credits_earned;
-                newSpent = user.credits_spent + amount;
+                newCredits = currentCredits - amount;
+                newEarned = currentEarned;
+                newSpent = currentSpent + amount;
                 transactionType = 'spend';
             } else {
                 throw new Error('Invalid operation');
@@ -338,13 +343,14 @@ async function getUserStats(email) {
             };
         }
 
+        // Convert all numeric fields to actual numbers
         return {
-            credits: rows[0].credits,
-            creditsEarned: rows[0].credits_earned,
-            creditsSpent: rows[0].credits_spent,
-            tasksCompleted: rows[0].tasks_completed,
-            jobsSubmitted: rows[0].jobs_submitted,
-            reputationScore: rows[0].reputation_score
+            credits: parseInt(rows[0].credits) || 0,
+            creditsEarned: parseInt(rows[0].credits_earned) || 0,
+            creditsSpent: parseInt(rows[0].credits_spent) || 0,
+            tasksCompleted: parseInt(rows[0].tasks_completed) || 0,
+            jobsSubmitted: parseInt(rows[0].jobs_submitted) || 0,
+            reputationScore: parseFloat(rows[0].reputation_score) || 100
         };
     } catch (error) {
         console.error('Get stats error:', error);

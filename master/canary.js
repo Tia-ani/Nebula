@@ -11,10 +11,16 @@ const canaryCorpus = expandedCanaryCorpus;
 // Returns: { tasks: [...], canaryMap: { taskIndex: canaryData } }
 function injectCanaries(realTasks, injectionRate = 0.15) {
     const result = [];
-    const canaryMap = new Map();
+    
+    // Filter out any undefined/null tasks from input
+    const validRealTasks = realTasks.filter(task => task && typeof task === 'string');
+    
+    if (validRealTasks.length !== realTasks.length) {
+        console.warn(`⚠️  Filtered out ${realTasks.length - validRealTasks.length} invalid tasks before canary injection`);
+    }
     
     // Add all real tasks first
-    realTasks.forEach(task => {
+    validRealTasks.forEach(task => {
         result.push({
             task,
             isCanary: false
@@ -22,11 +28,18 @@ function injectCanaries(realTasks, injectionRate = 0.15) {
     });
     
     // Calculate how many canaries to inject
-    const canaryCount = Math.max(1, Math.floor(realTasks.length * injectionRate));
+    const canaryCount = Math.max(1, Math.floor(validRealTasks.length * injectionRate));
     
     // Inject canaries at random positions
     for (let i = 0; i < canaryCount; i++) {
         const canary = getRandomCanary();
+        
+        // Validate canary has a prompt
+        if (!canary || !canary.prompt) {
+            console.error(`⚠️  Invalid canary selected:`, canary);
+            continue;
+        }
+        
         const canaryId = crypto.randomBytes(16).toString('hex');
         
         // Insert at random position
@@ -37,20 +50,19 @@ function injectCanaries(realTasks, injectionRate = 0.15) {
             canaryId,
             canaryData: canary
         });
-        
-        // Track canary position
-        canaryMap.set(insertPos, {
-            canaryId,
-            expected: canary.expectedPattern,
-            type: canary.type,
-            difficulty: canary.difficulty
-        });
     }
     
     // Return just the task strings (workers can't see metadata)
     const tasks = result.map(item => item.task);
     
-    // Build index map (after injection, positions have shifted)
+    // Validate no undefined tasks in final array
+    const undefinedCount = tasks.filter(t => !t).length;
+    if (undefinedCount > 0) {
+        console.error(`⚠️  ERROR: ${undefinedCount} undefined tasks in final array after canary injection!`);
+        console.error(`Tasks:`, tasks);
+    }
+    
+    // Build index map AFTER all injections (positions are now final)
     const indexMap = {};
     result.forEach((item, index) => {
         if (item.isCanary) {
@@ -62,6 +74,9 @@ function injectCanaries(realTasks, injectionRate = 0.15) {
             };
         }
     });
+    
+    console.log(`Canary injection: ${validRealTasks.length} real tasks + ${canaryCount} canaries = ${tasks.length} total`);
+    console.log(`Canary positions:`, Object.keys(indexMap).map(k => parseInt(k)));
     
     return {
         tasks,
