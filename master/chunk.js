@@ -20,12 +20,49 @@ function decrypt(encryptedData, sessionKey) {
     return JSON.parse(decrypted);
 }
 
-function splitIntoChunks(tasks, numWorkers) {
+function splitIntoChunks(tasks, numWorkers, workerTypes = []) {
     const chunks = [];
-    const chunkSize = Math.ceil(tasks.length / numWorkers);
-    for (let i = 0; i < tasks.length; i += chunkSize) {
-        chunks.push(tasks.slice(i, i + chunkSize));
+    let taskIndex = 0;
+    
+    // If we have worker type information, use smart chunking
+    if (workerTypes.length > 0) {
+        // Create worker info with indices
+        const workers = workerTypes.map((type, idx) => ({
+            index: idx,
+            type: type,
+            chunkSize: type === 'browser-worker' ? 25 : 
+                      type === 'gpu-worker' ? 200 : 100
+        }));
+        
+        // Sort by chunk size (smallest first) to ensure fair distribution
+        workers.sort((a, b) => a.chunkSize - b.chunkSize);
+        
+        // Distribute tasks round-robin across all workers (starting with smallest capacity)
+        let workerIdx = 0;
+        while (taskIndex < tasks.length) {
+            const worker = workers[workerIdx % workers.length];
+            
+            const chunk = tasks.slice(taskIndex, taskIndex + worker.chunkSize);
+            if (chunk.length > 0) {
+                chunks.push({
+                    tasks: chunk,
+                    workerIndex: worker.index // Use original worker index
+                });
+                taskIndex += chunk.length;
+            }
+            workerIdx++;
+        }
+    } else {
+        // Fallback: equal distribution
+        const chunkSize = Math.ceil(tasks.length / numWorkers);
+        for (let i = 0; i < tasks.length; i += chunkSize) {
+            chunks.push({
+                tasks: tasks.slice(i, i + chunkSize),
+                workerIndex: Math.floor(i / chunkSize) % numWorkers
+            });
+        }
     }
+    
     return chunks;
 }
 
