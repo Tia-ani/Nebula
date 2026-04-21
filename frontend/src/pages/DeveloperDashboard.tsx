@@ -27,6 +27,13 @@ const DeveloperDashboard: React.FC = () => {
     priorityMult: 1,
     totalCost: 0,
   });
+  
+  // File upload state
+  const [uploadMode, setUploadMode] = useState<'manual' | 'file'>('manual');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [fileColumn, setFileColumn] = useState('');
+  const [promptTemplate, setPromptTemplate] = useState('');
+  const [uploadProgress, setUploadProgress] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem('nebula-token');
@@ -136,6 +143,81 @@ const DeveloperDashboard: React.FC = () => {
       loadStats();
     } catch (error: any) {
       alert(error.response?.data?.error || error.message || 'Failed to submit job');
+    }
+  };
+  
+  const handleFileUpload = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!selectedFile) {
+      alert('Please select a file');
+      return;
+    }
+    
+    if (!promptTemplate.trim()) {
+      alert('Please provide an instruction/prompt template');
+      return;
+    }
+    
+    setUploadProgress(true);
+    
+    try {
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+      formData.append('config', JSON.stringify({
+        column: fileColumn || undefined,
+        promptTemplate: promptTemplate,
+        priority: priority
+      }));
+      
+      const token = localStorage.getItem('nebula-token');
+      const response = await fetch('http://localhost:3000/api/developer/upload-job', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        body: formData
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        const errorMsg = data.error || 'Upload failed';
+        const details = data.yourTemplate ? `\n\nYour template: "${data.yourTemplate}"\nExample: "${data.example}"` : '';
+        throw new Error(errorMsg + details);
+      }
+      
+      alert(`File uploaded successfully!\n\nJob ID: ${data.jobId}\nTasks: ${data.tasks}\nCost: ${data.cost} credits`);
+      setSelectedFile(null);
+      setFileColumn('');
+      setPromptTemplate('');
+      loadStats();
+    } catch (error: any) {
+      alert(error.message || 'Failed to upload file');
+    } finally {
+      setUploadProgress(false);
+    }
+  };
+  
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validate file type
+      const validTypes = ['.csv', '.json', '.jsonl', '.xlsx', '.xls'];
+      const ext = '.' + file.name.split('.').pop()?.toLowerCase();
+      
+      if (!validTypes.includes(ext)) {
+        alert('Invalid file type. Please upload CSV, JSON, JSONL, or XLSX files.');
+        return;
+      }
+      
+      // Validate file size (10MB)
+      if (file.size > 10 * 1024 * 1024) {
+        alert('File too large. Maximum size is 10MB.');
+        return;
+      }
+      
+      setSelectedFile(file);
     }
   };
 
@@ -299,7 +381,7 @@ const DeveloperDashboard: React.FC = () => {
         <div className="nav">
           <div className="logo">NEBULA</div>
           <div className="user-info">
-            <span className="user-name">{user.name}</span>
+            <span className="user-name">{user.name} ({user.email})</span>
             <button className="btn-logout" onClick={handleLogout}>Logout</button>
           </div>
         </div>
@@ -355,55 +437,233 @@ const DeveloperDashboard: React.FC = () => {
 
         <div className="section">
           <h2 className="section-title">Submit New Job</h2>
+          
+          {/* Mode Toggle */}
+          <div style={{ 
+            display: 'flex', 
+            gap: '12px', 
+            marginBottom: '24px',
+            borderBottom: '1px solid #222',
+            paddingBottom: '12px'
+          }}>
+            <button
+              type="button"
+              onClick={() => setUploadMode('manual')}
+              style={{
+                padding: '8px 16px',
+                background: uploadMode === 'manual' ? '#a78bfa' : 'transparent',
+                color: uploadMode === 'manual' ? 'white' : '#666',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '0.9rem',
+                fontWeight: 500
+              }}
+            >
+              Manual Input
+            </button>
+            <button
+              type="button"
+              onClick={() => setUploadMode('file')}
+              style={{
+                padding: '8px 16px',
+                background: uploadMode === 'file' ? '#a78bfa' : 'transparent',
+                color: uploadMode === 'file' ? 'white' : '#666',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '0.9rem',
+                fontWeight: 500
+              }}
+            >
+              📁 Upload File
+            </button>
+          </div>
 
-          <form onSubmit={handleSubmitJob}>
-            <div className="form-group">
-              <label>Tasks (one per line)</label>
-              <textarea
-                value={tasksInput}
-                onChange={(e) => setTasksInput(e.target.value)}
-                placeholder="Classify: This product is amazing!&#10;Summarize: AI is transforming...&#10;Translate: Hello world to Spanish"
-                required
-              />
-            </div>
-
-            <div className="form-row">
+          {uploadMode === 'manual' ? (
+            <form onSubmit={handleSubmitJob}>
               <div className="form-group">
-                <label>Priority</label>
-                <select value={priority} onChange={(e) => setPriority(e.target.value)}>
-                  <option value="normal">Normal (1x cost)</option>
-                  <option value="high">High (1.5x cost)</option>
-                  <option value="urgent">Urgent (2x cost)</option>
-                </select>
+                <label>Tasks (one per line)</label>
+                <textarea
+                  value={tasksInput}
+                  onChange={(e) => setTasksInput(e.target.value)}
+                  placeholder="Classify: This product is amazing!&#10;Summarize: AI is transforming...&#10;Translate: Hello world to Spanish"
+                  required
+                />
               </div>
-              <div className="form-group">
-                <label>Estimated Completion</label>
-                <input type="text" value="~2-5 minutes" readOnly style={{ color: 'var(--text-dim)' }} />
-              </div>
-            </div>
 
-            <div className="cost-estimate">
-              <h4>Cost Estimate</h4>
-              <div className="cost-line">
-                <span>Tasks:</span>
-                <span>{costEstimate.taskCount}</span>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Priority</label>
+                  <select value={priority} onChange={(e) => setPriority(e.target.value)}>
+                    <option value="normal">Normal (1x cost)</option>
+                    <option value="high">High (1.5x cost)</option>
+                    <option value="urgent">Urgent (2x cost)</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Estimated Completion</label>
+                  <input type="text" value="~2-5 minutes" readOnly style={{ color: 'var(--text-dim)' }} />
+                </div>
               </div>
-              <div className="cost-line">
-                <span>Base cost:</span>
-                <span>{costEstimate.baseCost} credits</span>
-              </div>
-              <div className="cost-line">
-                <span>Priority multiplier:</span>
-                <span>{costEstimate.priorityMult}x</span>
-              </div>
-              <div className="cost-line total">
-                <span>Total:</span>
-                <span>{costEstimate.totalCost} credits</span>
-              </div>
-            </div>
 
-            <button type="submit" className="btn-primary" style={{ marginTop: '24px' }}>Submit Job</button>
-          </form>
+              <div className="cost-estimate">
+                <h4>Cost Estimate</h4>
+                <div className="cost-line">
+                  <span>Tasks:</span>
+                  <span>{costEstimate.taskCount}</span>
+                </div>
+                <div className="cost-line">
+                  <span>Base cost:</span>
+                  <span>{costEstimate.baseCost} credits</span>
+                </div>
+                <div className="cost-line">
+                  <span>Priority multiplier:</span>
+                  <span>{costEstimate.priorityMult}x</span>
+                </div>
+                <div className="cost-line total">
+                  <span>Total:</span>
+                  <span>{costEstimate.totalCost} credits</span>
+                </div>
+              </div>
+
+              <button type="submit" className="btn-primary" style={{ marginTop: '24px' }}>Submit Job</button>
+            </form>
+          ) : (
+            <form onSubmit={handleFileUpload}>
+              <div style={{
+                border: '2px dashed #333',
+                borderRadius: '12px',
+                padding: '32px',
+                textAlign: 'center',
+                marginBottom: '24px',
+                background: selectedFile ? '#0a0a0a' : 'transparent'
+              }}>
+                {!selectedFile ? (
+                  <>
+                    <div style={{ fontSize: '3rem', marginBottom: '16px' }}>📁</div>
+                    <div style={{ color: '#ccc', marginBottom: '8px', fontSize: '1.1rem' }}>
+                      Upload CSV, JSON, JSONL, or XLSX
+                    </div>
+                    <div style={{ color: '#666', fontSize: '0.85rem', marginBottom: '16px' }}>
+                      Maximum file size: 10MB
+                    </div>
+                    <input
+                      type="file"
+                      accept=".csv,.json,.jsonl,.xlsx,.xls"
+                      onChange={handleFileSelect}
+                      style={{ display: 'none' }}
+                      id="file-upload"
+                    />
+                    <label htmlFor="file-upload" style={{
+                      display: 'inline-block',
+                      padding: '12px 24px',
+                      background: '#a78bfa',
+                      color: 'white',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      fontSize: '0.95rem',
+                      fontWeight: 500
+                    }}>
+                      Choose File
+                    </label>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ fontSize: '3rem', marginBottom: '16px' }}>✓</div>
+                    <div style={{ color: '#34d399', marginBottom: '8px', fontSize: '1.1rem', fontWeight: 500 }}>
+                      {selectedFile.name}
+                    </div>
+                    <div style={{ color: '#666', fontSize: '0.85rem', marginBottom: '16px' }}>
+                      {(selectedFile.size / 1024).toFixed(2)} KB
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedFile(null)}
+                      style={{
+                        padding: '8px 16px',
+                        background: '#333',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        fontSize: '0.85rem'
+                      }}
+                    >
+                      Remove File
+                    </button>
+                  </>
+                )}
+              </div>
+
+              {selectedFile && (
+                <>
+                  <div className="form-group">
+                    <label>Instruction / Prompt Template *</label>
+                    <textarea
+                      value={promptTemplate}
+                      onChange={(e) => setPromptTemplate(e.target.value)}
+                      placeholder="Classify the sentiment of this review as positive, negative, or neutral: {text}&#10;&#10;⚠️ Must include {text} or {column_name} placeholder!"
+                      required
+                      rows={4}
+                      style={{
+                        borderColor: promptTemplate && !promptTemplate.includes('{') ? '#ef4444' : undefined
+                      }}
+                    />
+                    <div style={{ 
+                      color: promptTemplate && !promptTemplate.includes('{') ? '#ef4444' : '#666', 
+                      fontSize: '0.8rem', 
+                      marginTop: '8px',
+                      fontWeight: promptTemplate && !promptTemplate.includes('{') ? 600 : 400
+                    }}>
+                      {promptTemplate && !promptTemplate.includes('{') ? (
+                        <>⚠️ Missing placeholder! Use {'{text}'} or {'{review_text}'}</>
+                      ) : (
+                        <>
+                          <strong>Examples:</strong><br/>
+                          • "Classify sentiment: {'{text}'}"<br/>
+                          • "Translate to Spanish: {'{text}'}"<br/>
+                          • "Summarize in 10 words: {'{text}'}"<br/>
+                          • "Is this spam? Answer yes or no: {'{text}'}"
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Column Name (optional)</label>
+                    <input
+                      type="text"
+                      value={fileColumn}
+                      onChange={(e) => setFileColumn(e.target.value)}
+                      placeholder="Leave empty to use first column"
+                    />
+                    <div style={{ color: '#666', fontSize: '0.8rem', marginTop: '4px' }}>
+                      For CSV/XLSX: column name. For JSON: key name. Use this name in your prompt template with {'{column_name}'}.
+                    </div>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Priority</label>
+                    <select value={priority} onChange={(e) => setPriority(e.target.value)}>
+                      <option value="normal">Normal (1x cost)</option>
+                      <option value="high">High (1.5x cost)</option>
+                      <option value="urgent">Urgent (2x cost)</option>
+                    </select>
+                  </div>
+
+                  <button 
+                    type="submit" 
+                    className="btn-primary" 
+                    style={{ marginTop: '24px' }}
+                    disabled={uploadProgress}
+                  >
+                    {uploadProgress ? 'Uploading...' : 'Upload & Submit Job'}
+                  </button>
+                </>
+              )}
+            </form>
+          )}
         </div>
 
         <div className="section">
