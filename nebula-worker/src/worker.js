@@ -68,7 +68,7 @@ async function pullModel(modelName) {
 }
 
 async function detectModel(preferredModel) {
-    const defaultModel = 'gemma:4b';
+    const defaultModel = 'llama3.2';  // Back to llama3.2 - it works reliably
     
     try {
         const res = await fetch('http://localhost:11434/api/tags');
@@ -110,18 +110,57 @@ async function detectModel(preferredModel) {
     }
 }
 
-async function processTask(task, model) {
-    try {
-        const response = await fetch('http://localhost:11434/api/generate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model, prompt: task, stream: false })
-        });
-        const data = await response.json();
-        return data.response.trim();
-    } catch (err) {
-        return `Error: ${err.message}`;
+async function processTask(task, model, maxRetries = 3) {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            // Handle undefined or null tasks
+            if (!task || typeof task !== 'string') {
+                console.log(`  ⚠️  Skipping invalid task: ${task}`);
+                return `Error: Invalid task input`;
+            }
+            
+            const response = await fetch('http://localhost:11434/api/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ model, prompt: task, stream: false })
+            });
+            
+            if (!response.ok) {
+                console.log(`  ⚠️  Ollama HTTP error: ${response.status} ${response.statusText}`);
+                
+                if (attempt < maxRetries) {
+                    console.log(`  🔄 Retrying (${attempt}/${maxRetries})...`);
+                    await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
+                    continue;
+                }
+                return `Error: Ollama returned ${response.status}`;
+            }
+            
+            const data = await response.json();
+            
+            // Handle undefined response from Ollama
+            if (!data.response || typeof data.response !== 'string') {
+                return `Error: Invalid response from model`;
+            }
+            
+            return data.response.trim();
+        } catch (err) {
+            console.log(`  ⚠️  Exception in processTask (attempt ${attempt}/${maxRetries}):`, err.message);
+            
+            if (err.message.includes('fetch failed') || err.message.includes('ECONNREFUSED')) {
+                if (attempt < maxRetries) {
+                    console.log(`  🔄 Ollama may have crashed. Waiting 5s before retry...`);
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+                    continue;
+                }
+                return `Error: Ollama connection failed after ${maxRetries} attempts`;
+            }
+            
+            return `Error: ${err.message}`;
+        }
     }
+    
+    return `Error: Failed after ${maxRetries} attempts`;
 }
 
 async function startWorker(masterUrl, preferredModel, userEmail) {
@@ -142,6 +181,11 @@ async function startWorker(masterUrl, preferredModel, userEmail) {
     let sessionKey = null;
     let tasksProcessed = 0;
     let chunksProcessed = 0;
+    
+    // Rate limiting
+    let requestCount = 0;
+    let windowStart = Date.now();
+    const MAX_REQUESTS_PER_MINUTE = 30;
 
     const socket = io(masterUrl, {
         query: { 
@@ -165,6 +209,10 @@ async function startWorker(masterUrl, preferredModel, userEmail) {
     socket.on('credits-earned', (data) => {
         console.log(`\n💰 Earned ${data.amount} credits for ${data.tasks} tasks!`);
     });
+    
+    socket.on('take-break', (data) => {
+        console.log(`\n⏸️  Server suggests taking a ${data.duration / 1000}s break to prevent overload`);
+    });
 
     socket.on('task-chunk', async (data) => {
         if (!sessionKey) {
@@ -183,6 +231,13 @@ async function startWorker(masterUrl, preferredModel, userEmail) {
             const decoded = decrypt(data.chunk, sessionKey);
             jobId = decoded.jobId;
             chunk = decoded.chunk;
+            
+            // Debug: Check for undefined in chunk
+            const undefinedCount = chunk.filter(t => !t).length;
+            if (undefinedCount > 0) {
+                console.log(`⚠️  WARNING: Received ${undefinedCount} undefined tasks in chunk!`);
+                console.log(`Chunk contents:`, chunk);
+            }
         } catch (err) {
             console.error('Failed to decrypt chunk:', err.message);
             return;
@@ -192,6 +247,29 @@ async function startWorker(masterUrl, preferredModel, userEmail) {
 
         const results = await Promise.all(
             chunk.map(async (task, i) => {
+                // Handle undefined/null tasks
+                if (!task || typeof task !== 'string') {
+                    console.log(`  ⚠️  Task ${i + 1} is invalid:`, task);
+                    return `Error: Invalid task`;
+                }
+                
+                // Rate limiting check
+                const now = Date.now();
+                if (now - windowStart >= 60000) {
+                    // Reset window
+                    windowStart = now;
+                    requestCount = 0;
+                }
+                
+                if (requestCount >= MAX_REQUESTS_PER_MINUTE) {
+                    const waitTime = 60000 - (now - windowStart);
+                    console.log(`  ⏸️  Rate limit reached (${MAX_REQUESTS_PER_MINUTE}/min). Waiting ${Math.ceil(waitTime / 1000)}s...`);
+                    await new Promise(resolve => setTimeout(resolve, waitTime));
+                    windowStart = Date.now();
+                    requestCount = 0;
+                }
+                
+                requestCount++;
                 console.log(`  Processing task ${i + 1}/${chunk.length}...`);
                 const result = await processTask(task, model);
                 tasksProcessed++;
