@@ -106,7 +106,7 @@ const ContributorDashboard: React.FC = () => {
             'Steps:\n' +
             '1. Install Ollama from ollama.ai\n' +
             '2. Run: ollama serve\n' +
-            '3. Run: ollama pull llama3.2\n' +
+            '3. Run: ollama pull gemma:4b\n' +
             '4. Come back and click Start again\n\n' +
             'Click OK to open Ollama download page.'
           );
@@ -119,26 +119,21 @@ const ContributorDashboard: React.FC = () => {
         // Ollama is running, show copy-paste command
         const user = JSON.parse(localStorage.getItem('nebula-user') || '{}');
         const masterUrl = window.location.origin;
-        const command = `npx nebula-worker start --master ${masterUrl} --email ${user.email}`;
+        const command = `npx nebula-worker@latest start --master ${masterUrl} --email ${user.email}`;
         
         setWorkerStates(prev => ({ ...prev, cpu: true }));
         
         // Copy to clipboard
         navigator.clipboard.writeText(command).then(() => {
-          alert(
-            '✓ Command copied to clipboard!\n\n' +
-            'Open Terminal and paste:\n' +
-            command + '\n\n' +
-            'Steps:\n' +
-            '1. Open Terminal (Cmd+Space, type "Terminal")\n' +
-            '2. Paste the command (Cmd+V)\n' +
-            '3. Press Enter\n' +
-            '4. Gemma model will auto-install if needed\n\n' +
-            'You earn 50 credits per task!'
-          );
+          // Show a better modal with the command
+          const message = `Command copied to clipboard!\n\nPaste this in Terminal:\n\n${command}\n\nSteps:\n1. Open Terminal (Cmd+Space → "Terminal")\n2. Paste (Cmd+V) and press Enter\n3. Worker will auto-start with llama3.2\n\nEarn 50 credits per task!`;
+          alert(message);
         }).catch(() => {
-          // Fallback if clipboard fails
-          prompt('Copy this command and run it in Terminal:', command);
+          // Fallback: show prompt that allows copying
+          const userCopied = prompt(
+            'Copy this command (Cmd+C) and run in Terminal:\n\nEarn 50 credits per task!',
+            command
+          );
         });
       }
       return;
@@ -164,24 +159,19 @@ const ContributorDashboard: React.FC = () => {
         // Show copy-paste command for GPU worker
         const user = JSON.parse(localStorage.getItem('nebula-user') || '{}');
         const masterUrl = window.location.origin;
-        const command = `npx nebula-worker start --gpu --master ${masterUrl} --email ${user.email}`;
+        const command = `npx nebula-worker@latest start --gpu --master ${masterUrl} --email ${user.email}`;
 
         setWorkerStates(prev => ({ ...prev, gpu: true }));
         
         // Copy to clipboard
         navigator.clipboard.writeText(command).then(() => {
-          alert(
-            '✓ Command copied to clipboard!\n\n' +
-            'Open Terminal and paste:\n' +
-            command + '\n\n' +
-            'Steps:\n' +
-            '1. Open Terminal\n' +
-            '2. Paste the command (Cmd+V)\n' +
-            '3. Press Enter\n\n' +
-            'You earn 100 credits per task!'
-          );
+          const message = `Command copied to clipboard!\n\nPaste this in Terminal:\n\n${command}\n\nSteps:\n1. Open Terminal\n2. Paste (Cmd+V) and press Enter\n3. GPU worker will auto-start\n\nEarn 100 credits per task!`;
+          alert(message);
         }).catch(() => {
-          prompt('Copy this command and run it in Terminal:', command);
+          const userCopied = prompt(
+            'Copy this command (Cmd+C) and run in Terminal:\n\nEarn 100 credits per task!',
+            command
+          );
         });
       }
     }
@@ -340,9 +330,9 @@ if ! curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
 fi
 
 # Check if llama3.2 model is installed
-if ! ollama list | grep -q "llama3.2"; then
-    echo "📥 Installing llama3.2 model..."
-    ollama pull llama3.2
+if ! ollama list | grep -q "gemma"; then
+    echo "📥 Installing gemma:4b model..."
+    ollama pull gemma:4b
 fi
 
 echo "✅ Ollama is ready!"
@@ -432,7 +422,7 @@ npx nebula-worker start --master ${masterUrl} --email ${email}${gpuFlag}
         <div className="nav">
           <div className="logo">NEBULA</div>
           <div className="user-info">
-            <span className="user-name">{user.name}</span>
+            <span className="user-name">{user.name} ({user.email})</span>
             <button className="btn-link" onClick={() => navigate('/profile')}>Profile</button>
             <button className="btn-logout" onClick={handleLogout}>Logout</button>
           </div>
