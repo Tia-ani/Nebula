@@ -97,41 +97,60 @@ const ContributorDashboard: React.FC = () => {
         setWorkerStates(prev => ({ ...prev, cpu: false }));
         alert('CPU worker stopped. Close the terminal running the worker.');
       } else {
-        // Check for Ollama
-        const hasOllama = await checkOllama();
+        // Show instructions first, then command
+        const user = JSON.parse(localStorage.getItem('nebula-user') || '{}');
+        const masterUrl = window.location.origin;
+        const command = `npx nebula-worker@latest start --master ${masterUrl} --email ${user.email}`;
+        
+        const hasOllama = window.confirm(
+          '⚠️ CPU Worker Requirements:\n\n' +
+          '1. Ollama must be installed on YOUR computer\n' +
+          '2. Ollama must be running (ollama serve)\n' +
+          '3. Model must be downloaded (ollama pull llama3.2)\n\n' +
+          'Do you have Ollama installed and running?\n\n' +
+          'Click OK if YES (show command)\n' +
+          'Click Cancel if NO (get installation instructions)'
+        );
+        
         if (!hasOllama) {
+          // User doesn't have Ollama - show installation instructions
           const install = window.confirm(
-            'Ollama is not running or not installed.\n\n' +
-            'Ollama is required for CPU workers.\n\n' +
-            'Steps:\n' +
-            '1. Install Ollama from ollama.ai\n' +
-            '2. Run: ollama serve\n' +
-            '3. Run: ollama pull gemma:4b\n' +
-            '4. Come back and click Start again\n\n' +
-            'Click OK to open Ollama download page.'
+            '📥 Install Ollama First:\n\n' +
+            'Step 1: Download Ollama\n' +
+            '   Visit: https://ollama.ai/download\n\n' +
+            'Step 2: Install and start Ollama\n' +
+            '   Run: ollama serve\n\n' +
+            'Step 3: Download the model\n' +
+            '   Run: ollama pull llama3.2\n\n' +
+            'Step 4: Come back and click "Start CPU Worker" again\n\n' +
+            'Click OK to open Ollama download page'
           );
+          
           if (install) {
             window.open('https://ollama.ai/download', '_blank');
           }
           return;
         }
-
-        // Ollama is running, show copy-paste command
-        const user = JSON.parse(localStorage.getItem('nebula-user') || '{}');
-        const masterUrl = window.location.origin;
-        const command = `npx nebula-worker@latest start --master ${masterUrl} --email ${user.email}`;
         
+        // User has Ollama - show the command
         setWorkerStates(prev => ({ ...prev, cpu: true }));
         
         // Copy to clipboard
         navigator.clipboard.writeText(command).then(() => {
-          // Show a better modal with the command
-          const message = `Command copied to clipboard!\n\nPaste this in Terminal:\n\n${command}\n\nSteps:\n1. Open Terminal (Cmd+Space → "Terminal")\n2. Paste (Cmd+V) and press Enter\n3. Worker will auto-start with llama3.2\n\nEarn 50 credits per task!`;
-          alert(message);
+          alert(
+            '✅ Command copied to clipboard!\n\n' +
+            `${command}\n\n` +
+            'Steps:\n' +
+            '1. Open Terminal on your computer\n' +
+            '2. Paste (Cmd+V or Ctrl+V) and press Enter\n' +
+            '3. Worker will connect and start earning credits!\n\n' +
+            '💰 Earn 50 credits per task!'
+          );
         }).catch(() => {
           // Fallback: show prompt that allows copying
-          const userCopied = prompt(
-            'Copy this command (Cmd+C) and run in Terminal:\n\nEarn 50 credits per task!',
+          prompt(
+            '📋 Copy this command and run in Terminal:\n\n' +
+            '💰 Earn 50 credits per task!',
             command
           );
         });
@@ -357,16 +376,15 @@ npx nebula-worker start --master ${masterUrl} --email ${email}${gpuFlag}
 
   const checkOllama = async (): Promise<boolean> => {
     try {
-      // Check Ollama directly from browser (user's machine)
-      const response = await fetch('http://localhost:11434/api/tags', {
-        method: 'GET',
-        signal: AbortSignal.timeout(2000)
+      // Use backend proxy to avoid CORS issues
+      const response = await fetch(`${window.location.origin}/api/contributor/check-ollama`, {
+        method: 'GET'
       });
       
       if (response.ok) {
         const data = await response.json();
-        console.log('Ollama detected:', data.models?.length || 0, 'models');
-        return true;
+        console.log('Ollama detected:', data.running, data.models?.length || 0, 'models');
+        return data.running === true;
       }
       return false;
     } catch (error) {
