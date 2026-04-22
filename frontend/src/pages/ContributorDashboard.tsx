@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { contributor } from '../utils/api';
 import BrowserWorker from '../components/BrowserWorker';
+import ConfirmModal from '../components/ConfirmModal';
 import io, { Socket } from 'socket.io-client';
 import '../styles/ContributorDashboard.css';
 
@@ -21,6 +22,21 @@ const ContributorDashboard: React.FC = () => {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [showCreditsNotification, setShowCreditsNotification] = useState(false);
   const [creditsEarned, setCreditsEarned] = useState(0);
+  
+  // Modal states
+  const [modalState, setModalState] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onYes: () => void;
+    onNo: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onYes: () => {},
+    onNo: () => {}
+  });
 
   useEffect(() => {
     const token = localStorage.getItem('nebula-token');
@@ -102,57 +118,66 @@ const ContributorDashboard: React.FC = () => {
         const masterUrl = window.location.origin;
         const command = `npx nebula-worker@latest start --master ${masterUrl} --email ${user.email}`;
         
-        const hasOllama = window.confirm(
-          '⚠️ CPU Worker Requirements:\n\n' +
-          '1. Ollama must be installed on YOUR computer\n' +
-          '2. Ollama must be running (ollama serve)\n' +
-          '3. Model must be downloaded (ollama pull llama3.2)\n\n' +
-          'Do you have Ollama installed and running?\n\n' +
-          'Click OK if YES (show command)\n' +
-          'Click Cancel if NO (get installation instructions)'
-        );
-        
-        if (!hasOllama) {
-          // User doesn't have Ollama - show installation instructions
-          const install = window.confirm(
-            '📥 Install Ollama First:\n\n' +
-            'Step 1: Download Ollama\n' +
-            '   Visit: https://ollama.ai/download\n\n' +
-            'Step 2: Install and start Ollama\n' +
-            '   Run: ollama serve\n\n' +
-            'Step 3: Download the model\n' +
-            '   Run: ollama pull llama3.2\n\n' +
-            'Step 4: Come back and click "Start CPU Worker" again\n\n' +
-            'Click OK to open Ollama download page'
-          );
-          
-          if (install) {
-            window.open('https://ollama.ai/download', '_blank');
+        // Ask if user has Ollama using custom modal
+        setModalState({
+          isOpen: true,
+          title: 'CPU Worker Requirements',
+          message: 
+            '1. Ollama must be installed on YOUR computer\n' +
+            '2. Ollama must be running (ollama serve)\n' +
+            '3. Model must be downloaded (ollama pull llama3.2)\n\n' +
+            'Do you have Ollama installed and running?\n\n' +
+            'YES = Show command to start worker\n' +
+            'NO = Show installation instructions',
+          onYes: () => {
+            // User has Ollama - show the command
+            setModalState({ ...modalState, isOpen: false });
+            setWorkerStates(prev => ({ ...prev, cpu: true }));
+            
+            // Copy to clipboard
+            navigator.clipboard.writeText(command).then(() => {
+              alert(
+                '✅ Command copied to clipboard!\n\n' +
+                `${command}\n\n` +
+                'Steps:\n' +
+                '1. Open Terminal on your computer\n' +
+                '2. Paste (Cmd+V or Ctrl+V) and press Enter\n' +
+                '3. Worker will connect and start earning credits!\n\n' +
+                '💰 Earn 50 credits per task!'
+              );
+            }).catch(() => {
+              // Fallback: show prompt that allows copying
+              prompt(
+                '📋 Copy this command and run in Terminal:\n\n' +
+                '💰 Earn 50 credits per task!',
+                command
+              );
+            });
+          },
+          onNo: () => {
+            // User doesn't have Ollama - show installation instructions
+            setModalState({
+              isOpen: true,
+              title: 'Install Ollama First',
+              message:
+                'Step 1: Download Ollama\n' +
+                '   Visit: https://ollama.ai/download\n\n' +
+                'Step 2: Install and start Ollama\n' +
+                '   Run: ollama serve\n\n' +
+                'Step 3: Download the model\n' +
+                '   Run: ollama pull llama3.2\n\n' +
+                'Step 4: Come back and click "Start CPU Worker" again\n\n' +
+                'YES = Open Ollama download page\n' +
+                'NO = Cancel',
+              onYes: () => {
+                setModalState({ ...modalState, isOpen: false });
+                window.open('https://ollama.ai/download', '_blank');
+              },
+              onNo: () => {
+                setModalState({ ...modalState, isOpen: false });
+              }
+            });
           }
-          return;
-        }
-        
-        // User has Ollama - show the command
-        setWorkerStates(prev => ({ ...prev, cpu: true }));
-        
-        // Copy to clipboard
-        navigator.clipboard.writeText(command).then(() => {
-          alert(
-            '✅ Command copied to clipboard!\n\n' +
-            `${command}\n\n` +
-            'Steps:\n' +
-            '1. Open Terminal on your computer\n' +
-            '2. Paste (Cmd+V or Ctrl+V) and press Enter\n' +
-            '3. Worker will connect and start earning credits!\n\n' +
-            '💰 Earn 50 credits per task!'
-          );
-        }).catch(() => {
-          // Fallback: show prompt that allows copying
-          prompt(
-            '📋 Copy this command and run in Terminal:\n\n' +
-            '💰 Earn 50 credits per task!',
-            command
-          );
         });
       }
       return;
@@ -420,6 +445,14 @@ npx nebula-worker start --master ${masterUrl} --email ${email}${gpuFlag}
 
   return (
     <div className="contributor-dashboard">
+      <ConfirmModal
+        isOpen={modalState.isOpen}
+        title={modalState.title}
+        message={modalState.message}
+        onYes={modalState.onYes}
+        onNo={modalState.onNo}
+      />
+      
       {showCreditsNotification && (
         <div style={{
           position: 'fixed',
