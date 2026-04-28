@@ -301,6 +301,23 @@ io.on('connection', (socket) => {
             if (jobIndex !== -1) recentJobs[jobIndex].status = 'complete';
             emitDashboardUpdate();
             
+            // Store results in database for later download
+            if (job.developerEmail) {
+                try {
+                    await db.query(
+                        `INSERT INTO completed_jobs (job_id, developer_email, results, total_tasks, completed_at, metadata)
+                         VALUES ($1, $2, $3, $4, NOW(), $5)
+                         ON CONFLICT (job_id) DO UPDATE SET
+                         results = EXCLUDED.results,
+                         completed_at = EXCLUDED.completed_at`,
+                        [jobId, job.developerEmail, JSON.stringify(developerResults), developerResults.length, JSON.stringify({ priority: job.priority || 'normal' })]
+                    );
+                    console.log(`Stored results for job ${jobId} in database`);
+                } catch (error) {
+                    console.error(`Failed to store job results in database:`, error);
+                }
+            }
+            
             // Send HTTP response if this is a legacy /job or /api/v1/run request
             if (job.res && !job.res.headersSent) {
                 job.res.json({ jobId, result: developerResults });
@@ -1146,6 +1163,178 @@ app.post('/api/developer/upload-job', requireAuth, requireRole('developer'), upl
             error: 'Internal server error',
             message: error.message
         });
+    }
+});
+
+// ─── Result Download API ───────────────────────────────────────────
+
+// Get list of completed jobs for download
+app.get('/api/developer/completed-jobs', requireAuth, requireRole('developer'), async (req, res) => {
+    try {
+        const { pool } = require('./database');
+        const result = await pool.query(
+            `SELECT job_id, total_tasks, completed_at, metadata
+             FROM completed_jobs
+             WHERE developer_email = $1
+             ORDER BY completed_at DESC
+             LIMIT 50`,
+            [req.user.email]
+        );
+        
+        res.json({ jobs: result.rows });
+    } catch (error) {
+        console.error('Failed to get completed jobs:', error);
+        res.status(500).json({ error: 'Failed to retrieve completed jobs' });
+    }
+});
+
+// Get job results (JSON format)
+app.get('/api/developer/results/:jobId', requireAuth, requireRole('developer'), async (req, res) => {
+    try {
+        const { jobId } = req.params;
+        const { pool } = require('./database');
+        
+        const result = await pool.query(
+            `SELECT results, total_tasks, completed_at, metadata
+             FROM completed_jobs
+             WHERE job_id = $1 AND developer_email = $2`,
+            [jobId, req.user.email]
+        );
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Job not found or access denied' });
+        }
+        
+        const job = result.rows[0];
+        res.json({
+            jobId,
+            results: job.results,
+            totalTasks: job.total_tasks,
+            completedAt: job.completed_at,
+            metadata: job.metadata
+        });
+    } catch (error) {
+        console.error('Failed to get job results:', error);
+        res.status(500).json({ error: 'Failed to retrieve job results' });
+    }
+});
+
+// Download results as JSON file
+app.get('/api/developer/download/:jobId/json', requireAuth, requireRole('developer'), async (req, res) => {
+    try {
+        const { jobId } = req.params;
+        const { pool } = require('./database');
+        
+        const result = await pool.query(
+            `SELECT results, completed_at
+             FROM completed_jobs
+             WHERE job_id = $1 AND developer_email = $2`,
+            [jobId, req.user.email]
+        );
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Job not found or access denied' });
+        }
+        
+        const job = result.rows[0];
+        const filename = `nebula-results-${jobId}-${Date.now()}.json`;
+        
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.json({
+            jobId,
+            completedAt: job.completed_at,
+            totalResults: job.results.length,
+            results: job.results
+        });
+    } catch (error) {
+        console.error('Failed to download JSON results:', error);
+        res.status(500).json({ error: 'Failed to download results' });
+    }
+});
+
+// Download results as CSV file
+app.get('/api/developer/download/:jobId/csv', requireAuth, requireRole('developer'), async (req, res) => {
+    try {
+        const { jobId } = req.params;
+        const { pool } = require('./database');
+        
+        const result = await pool.query(
+            `SELECT results
+             FROM completed_jobs
+             WHERE job_id = $1 AND developer_email = $2`,
+            [jobId, req.user.email]
+        );
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Job not found or access denied' });
+        }
+        
+        const results = result.rows[0].results;
+        
+        // Convert results to CSV
+        let csv = 'Index,Result\n';
+        results.forEach((result, index) => {
+            // Escape quotes and newlines in result
+            let resultText = '';
+            if (typeof result === 'string') {
+                resultText = result;
+            } else if (result && typeof result === 'object') {
+                resultText = JSON.stringify(result);
+            } else {
+                resultText = String(result);
+            }
+            
+            // Escape CSV special characters
+            resultText = resultText.replace(/"/g, '""'); // Escape quotes
+            resultText = `"${resultText}"`; // Wrap in quotes
+            
+            csv += `${index + 1},${resultText}\n`;
+        });
+        
+        const filename = `nebula-results-${jobId}-${Date.now()}.csv`;
+        
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.send(csv);
+    } catch (error) {
+        console.error('Failed to download CSV results:', error);
+        res.status(500).json({ error: 'Failed to download results' });
+    }
+});
+
+// Download results as JSONL file (one JSON object per line)
+app.get('/api/developer/download/:jobId/jsonl', requireAuth, requireRole('developer'), async (req, res) => {
+    try {
+        const { jobId } = req.params;
+        const { pool } = require('./database');
+        
+        const result = await pool.query(
+            `SELECT results
+             FROM completed_jobs
+             WHERE job_id = $1 AND developer_email = $2`,
+            [jobId, req.user.email]
+        );
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Job not found or access denied' });
+        }
+        
+        const results = result.rows[0].results;
+        
+        // Convert to JSONL format
+        const jsonl = results.map((result, index) => 
+            JSON.stringify({ index: index + 1, result })
+        ).join('\n');
+        
+        const filename = `nebula-results-${jobId}-${Date.now()}.jsonl`;
+        
+        res.setHeader('Content-Type', 'application/x-ndjson');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.send(jsonl);
+    } catch (error) {
+        console.error('Failed to download JSONL results:', error);
+        res.status(500).json({ error: 'Failed to download results' });
     }
 });
 
