@@ -18,6 +18,7 @@ const DeveloperDashboard: React.FC = () => {
   const [jobResults, setJobResults] = useState<any>(null);
   const [showResultsModal, setShowResultsModal] = useState(false);
   const [completedJobs, setCompletedJobs] = useState<Map<string, any>>(new Map());
+  const [downloadableJobs, setDownloadableJobs] = useState<any[]>([]);
 
   const [tasksInput, setTasksInput] = useState('');
   const [priority, setPriority] = useState('normal');
@@ -100,6 +101,18 @@ const DeveloperDashboard: React.FC = () => {
       // Load recent jobs
       const jobsResponse = await developer.getJobs();
       setRecentJobs(jobsResponse.data.jobs || []);
+      
+      // Load completed jobs for download
+      const token = localStorage.getItem('nebula-token');
+      const completedResponse = await fetch('http://localhost:3000/api/developer/completed-jobs', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (completedResponse.ok) {
+        const completedData = await completedResponse.json();
+        setDownloadableJobs(completedData.jobs || []);
+      }
     } catch (error) {
       console.error('Failed to load stats:', error);
     }
@@ -230,6 +243,43 @@ const DeveloperDashboard: React.FC = () => {
       } else {
         alert('Job results not available. Results are only stored for jobs completed in this session.');
       }
+    }
+  };
+  
+  const handleDownload = async (jobId: string, format: 'json' | 'csv' | 'jsonl') => {
+    try {
+      const token = localStorage.getItem('nebula-token');
+      const response = await fetch(`http://localhost:3000/api/developer/download/${jobId}/${format}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Download failed');
+      }
+      
+      // Get filename from Content-Disposition header or create one
+      const contentDisposition = response.headers.get('Content-Disposition');
+      let filename = `nebula-results-${jobId}.${format}`;
+      if (contentDisposition) {
+        const match = contentDisposition.match(/filename="(.+)"/);
+        if (match) filename = match[1];
+      }
+      
+      // Download the file
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      alert('Failed to download results');
+      console.error('Download error:', error);
     }
   };
 
@@ -688,6 +738,85 @@ const DeveloperDashboard: React.FC = () => {
               ))
             ) : (
               <p style={{ color: 'var(--text-dim)', textAlign: 'center' }}>No jobs yet</p>
+            )}
+          </div>
+        </div>
+
+        <div className="section">
+          <h2 className="section-title">Download Results</h2>
+          <div style={{ color: '#666', fontSize: '0.9rem', marginBottom: '16px' }}>
+            Download completed job results in your preferred format
+          </div>
+          <div className="job-list">
+            {downloadableJobs.length > 0 ? (
+              downloadableJobs.map((job, i) => (
+                <div 
+                  key={i} 
+                  className="job-item"
+                  style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    alignItems: 'center',
+                    padding: '16px'
+                  }}
+                >
+                  <div className="job-info">
+                    <div className="job-id">{job.job_id}</div>
+                    <div style={{ fontSize: '0.85rem', marginTop: '4px', color: '#666' }}>
+                      {job.total_tasks} results • {new Date(job.completed_at).toLocaleString()}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      onClick={() => handleDownload(job.job_id, 'csv')}
+                      style={{
+                        padding: '8px 16px',
+                        background: '#34d399',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        fontSize: '0.85rem',
+                        fontWeight: 500
+                      }}
+                    >
+                      CSV
+                    </button>
+                    <button
+                      onClick={() => handleDownload(job.job_id, 'json')}
+                      style={{
+                        padding: '8px 16px',
+                        background: '#60a5fa',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        fontSize: '0.85rem',
+                        fontWeight: 500
+                      }}
+                    >
+                      JSON
+                    </button>
+                    <button
+                      onClick={() => handleDownload(job.job_id, 'jsonl')}
+                      style={{
+                        padding: '8px 16px',
+                        background: '#a78bfa',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        fontSize: '0.85rem',
+                        fontWeight: 500
+                      }}
+                    >
+                      JSONL
+                    </button>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p style={{ color: 'var(--text-dim)', textAlign: 'center' }}>No completed jobs available for download</p>
             )}
           </div>
         </div>
